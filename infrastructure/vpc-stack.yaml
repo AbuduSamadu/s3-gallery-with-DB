@@ -1,143 +1,151 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: >
-  CloudFormation template to provision a custom VPC with public/private subnets,
-  NAT Gateway, route tables, security groups, and an RDS PostgreSQL database.
+Description: 'VPC Infrastructure with Single NAT Gateway, PostgreSQL RDS, IAM Role for S3, and Secure S3 Bucket Policy'
 
 Parameters:
-  EnvironmentName:
-    Description: The name of the environment (e.g., dev, prod)
+  ProjectName:
     Type: String
-    Default: dev
+    Default: s3-app
+    Description: Name of the project
 
-  VpcCidrBlock:
-    Description: CIDR block for the VPC
+  VpcCIDR:
     Type: String
     Default: 10.0.0.0/16
+    Description: CIDR block for the VPC
 
-  PublicSubnet1Cidr:
-    Description: CIDR block for Public Subnet 1
+  PublicSubnet1CIDR:
     Type: String
     Default: 10.0.1.0/24
+    Description: CIDR block for Public Subnet 1
 
-  PublicSubnet2Cidr:
-    Description: CIDR block for Public Subnet 2
+  PublicSubnet2CIDR:
     Type: String
     Default: 10.0.2.0/24
+    Description: CIDR block for Public Subnet 2
 
-  PrivateSubnet1Cidr:
-    Description: CIDR block for Private Subnet 1
+  PrivateSubnet1CIDR:
     Type: String
     Default: 10.0.3.0/24
+    Description: CIDR block for Private Subnet 1
 
-  PrivateSubnet2Cidr:
-    Description: CIDR block for Private Subnet 2
+  PrivateSubnet2CIDR:
     Type: String
     Default: 10.0.4.0/24
-
-  DBInstanceClass:
-    Description: The instance class for the RDS database
-    Type: String
-    Default: db.t3.medium
-
-  DBAllocatedStorage:
-    Description: The storage size (in GB) for the RDS database
-    Type: Number
-    Default: 20
+    Description: CIDR block for Private Subnet 2
 
   DBUsername:
-    Description: Master username for the RDS database
     Type: String
-    Default: admin
+    Default: mascot
+    Description: Username for the PostgreSQL database
 
   DBPassword:
-    Description: Master password for the RDS database
     Type: String
     NoEcho: true
-    Default: MySecurePassword123!
+    Default: Abudu?0248
+    Description: Password for the PostgreSQL database
+
+  ContainerPort:
+    Type: Number
+    Default: 9090
+    Description: Port on which the container will listen
+
+  ECRRepositoryName:
+    Type: String
+    Default: s3-gallery
+    Description: Name of the ECR repository
+
+  S3BucketName:
+    Type: String
+    Default: image-gallery-mascot-new-1
+    Description: Name of the S3 bucket for storing images
 
 Resources:
   # VPC
   VPC:
     Type: AWS::EC2::VPC
     Properties:
-      CidrBlock: !Ref VpcCidrBlock
+      CidrBlock: !Ref VpcCIDR
       EnableDnsSupport: true
       EnableDnsHostnames: true
       Tags:
         - Key: Name
-          Value: !Sub "${EnvironmentName}-vpc"
+          Value: !Sub ${ProjectName}-vpc
 
+  # Internet Gateway
   InternetGateway:
     Type: AWS::EC2::InternetGateway
     Properties:
       Tags:
         - Key: Name
-          Value: !Sub "${EnvironmentName}-igw"
+          Value: !Sub ${ProjectName}-igw
 
-  VPCGatewayAttachment:
+  InternetGatewayAttachment:
     Type: AWS::EC2::VPCGatewayAttachment
     Properties:
-      VpcId: !Ref VPC
       InternetGatewayId: !Ref InternetGateway
+      VpcId: !Ref VPC
 
   # Public Subnets
   PublicSubnet1:
     Type: AWS::EC2::Subnet
     Properties:
       VpcId: !Ref VPC
-      CidrBlock: !Ref PublicSubnet1Cidr
-      AvailabilityZone: !Select [0, !GetAZs]
+      AvailabilityZone: !Select [ 0, !GetAZs '' ]
+      CidrBlock: !Ref PublicSubnet1CIDR
       MapPublicIpOnLaunch: true
       Tags:
         - Key: Name
-          Value: !Sub "${EnvironmentName}-public-subnet-1"
+          Value: !Sub ${ProjectName}-public-subnet-1
 
   PublicSubnet2:
     Type: AWS::EC2::Subnet
     Properties:
       VpcId: !Ref VPC
-      CidrBlock: !Ref PublicSubnet2Cidr
-      AvailabilityZone: !Select [1, !GetAZs]
+      AvailabilityZone: !Select [ 1, !GetAZs '' ]
+      CidrBlock: !Ref PublicSubnet2CIDR
       MapPublicIpOnLaunch: true
       Tags:
         - Key: Name
-          Value: !Sub "${EnvironmentName}-public-subnet-2"
+          Value: !Sub ${ProjectName}-public-subnet-2
 
   # Private Subnets
   PrivateSubnet1:
     Type: AWS::EC2::Subnet
     Properties:
       VpcId: !Ref VPC
-      CidrBlock: !Ref PrivateSubnet1Cidr
-      AvailabilityZone: !Select [0, !GetAZs]
+      AvailabilityZone: !Select [ 0, !GetAZs '' ]
+      CidrBlock: !Ref PrivateSubnet1CIDR
+      MapPublicIpOnLaunch: false
       Tags:
         - Key: Name
-          Value: !Sub "${EnvironmentName}-private-subnet-1"
+          Value: !Sub ${ProjectName}-private-subnet-1
 
   PrivateSubnet2:
     Type: AWS::EC2::Subnet
     Properties:
       VpcId: !Ref VPC
-      CidrBlock: !Ref PrivateSubnet2Cidr
-      AvailabilityZone: !Select [1, !GetAZs]
+      AvailabilityZone: !Select [ 1, !GetAZs '' ]
+      CidrBlock: !Ref PrivateSubnet2CIDR
+      MapPublicIpOnLaunch: false
       Tags:
         - Key: Name
-          Value: !Sub "${EnvironmentName}-private-subnet-2"
+          Value: !Sub ${ProjectName}-private-subnet-2
 
-  # NAT Gateway
-  EIPForNatGateway:
+  # NAT Gateway EIP
+  NatGatewayEIP:
     Type: AWS::EC2::EIP
+    DependsOn: InternetGatewayAttachment
     Properties:
       Domain: vpc
 
+  # NAT Gateway
   NatGateway:
     Type: AWS::EC2::NatGateway
     Properties:
-      AllocationId: !GetAtt EIPForNatGateway.AllocationId
+      AllocationId: !GetAtt NatGatewayEIP.AllocationId
       SubnetId: !Ref PublicSubnet1
       Tags:
         - Key: Name
-          Value: !Sub "${EnvironmentName}-nat-gateway"
+          Value: !Sub ${ProjectName}-nat-gateway
 
   # Route Tables
   PublicRouteTable:
@@ -146,16 +154,33 @@ Resources:
       VpcId: !Ref VPC
       Tags:
         - Key: Name
-          Value: !Sub "${EnvironmentName}-public-rt"
+          Value: !Sub ${ProjectName}-public-route-table
 
+  PrivateRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Sub ${ProjectName}-private-route-table
+
+  # Routes
   PublicRoute:
     Type: AWS::EC2::Route
-    DependsOn: VPCGatewayAttachment
+    DependsOn: InternetGatewayAttachment
     Properties:
       RouteTableId: !Ref PublicRouteTable
       DestinationCidrBlock: 0.0.0.0/0
       GatewayId: !Ref InternetGateway
 
+  PrivateRoute:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref NatGateway
+
+  # Route Table Associations
   PublicSubnet1RouteTableAssociation:
     Type: AWS::EC2::SubnetRouteTableAssociation
     Properties:
@@ -167,21 +192,6 @@ Resources:
     Properties:
       SubnetId: !Ref PublicSubnet2
       RouteTableId: !Ref PublicRouteTable
-
-  PrivateRouteTable:
-    Type: AWS::EC2::RouteTable
-    Properties:
-      VpcId: !Ref VPC
-      Tags:
-        - Key: Name
-          Value: !Sub "${EnvironmentName}-private-rt"
-
-  PrivateRoute:
-    Type: AWS::EC2::Route
-    Properties:
-      RouteTableId: !Ref PrivateRouteTable
-      DestinationCidrBlock: 0.0.0.0/0
-      NatGatewayId: !Ref NatGateway
 
   PrivateSubnet1RouteTableAssociation:
     Type: AWS::EC2::SubnetRouteTableAssociation
@@ -196,6 +206,38 @@ Resources:
       RouteTableId: !Ref PrivateRouteTable
 
   # Security Groups
+  ALBSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security group for ALB
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+      Tags:
+        - Key: Name
+          Value: !Sub ${ProjectName}-alb-sg
+
+  ECSSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security group for ECS tasks
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: !Ref ContainerPort
+          ToPort: !Ref ContainerPort
+          SourceSecurityGroupId: !Ref ALBSecurityGroup
+      Tags:
+        - Key: Name
+          Value: !Sub ${ProjectName}-ecs-sg
+
   RDSSecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
@@ -205,99 +247,222 @@ Resources:
         - IpProtocol: tcp
           FromPort: 5432
           ToPort: 5432
-          SourceSecurityGroupId: !Ref AppSecurityGroup
+          SourceSecurityGroupId: !Ref ECSSecurityGroup
       Tags:
         - Key: Name
-          Value: !Sub "${EnvironmentName}-rds-sg"
+          Value: !Sub ${ProjectName}-rds-sg
 
-  AppSecurityGroup:
-    Type: AWS::EC2::SecurityGroup
-    Properties:
-      GroupDescription: Security group for application instances
-      VpcId: !Ref VPC
-      SecurityGroupIngress:
-        - IpProtocol: tcp
-          FromPort: 80
-          ToPort: 80
-          CidrIp: 0.0.0.0/0
-      Tags:
-        - Key: Name
-          Value: !Sub "${EnvironmentName}-app-sg"
-
-  # RDS PostgreSQL Database
+  # PostgreSQL RDS Instance
   RDSInstance:
     Type: AWS::RDS::DBInstance
     Properties:
-      DBInstanceIdentifier: !Sub "${EnvironmentName}-db"
-      DBInstanceClass: !Ref DBInstanceClass
-      AllocatedStorage: !Ref DBAllocatedStorage
+      DBInstanceIdentifier: !Sub ${ProjectName}-db
+      AllocatedStorage: 20
+      DBInstanceClass: db.t3.micro
       Engine: postgres
-      EngineVersion: "13.6"
       MasterUsername: !Ref DBUsername
       MasterUserPassword: !Ref DBPassword
-      MultiAZ: true
-      StorageType: gp2
-      BackupRetentionPeriod: 7
-      DBSubnetGroupName: !Ref DBSubnetGroup
       VPCSecurityGroups:
         - !GetAtt RDSSecurityGroup.GroupId
+      DBSubnetGroupName: !Ref DBSubnetGroup
+      MultiAZ: false
+      PubliclyAccessible: false
+      BackupRetentionPeriod: 7
+      DeletionProtection: false
       Tags:
         - Key: Name
-          Value: !Sub "${EnvironmentName}-rds-instance"
+          Value: !Sub ${ProjectName}-db
 
+  # DB Subnet Group
   DBSubnetGroup:
     Type: AWS::RDS::DBSubnetGroup
     Properties:
-      DBSubnetGroupName: !Sub "${EnvironmentName}-db-subnet-group"
+      DBSubnetGroupName: !Sub ${ProjectName}-db-subnet-group
       DBSubnetGroupDescription: Subnet group for RDS
       SubnetIds:
         - !Ref PrivateSubnet1
         - !Ref PrivateSubnet2
+      Tags:
+        - Key: Name
+          Value: !Sub ${ProjectName}-db-subnet-group
 
-  # Store Database Credentials in Parameter Store
-  DBUsernameParameter:
-    Type: AWS::SSM::Parameter
+  # S3 Bucket for Images
+  ImagesBucket:
+    Type: AWS::S3::Bucket
     Properties:
-      Name: !Sub "/${EnvironmentName}/db/username"
-      Type: String
-      Value: !Ref DBUsername
+      BucketName: !Ref S3BucketName
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: false
+        BlockPublicPolicy: false
+        IgnorePublicAcls: false
+        RestrictPublicBuckets: false
+      VersioningConfiguration:
+        Status: Enabled
 
-  DBPasswordParameter:
-    Type: AWS::SSM::Parameter
+  # S3 Bucket Policy
+  S3BucketPolicy:
+    Type: AWS::S3::BucketPolicy
     Properties:
-      Name: !Sub "/${EnvironmentName}/db/password"
-      Type: SecureString
-      Value: !Ref DBPassword
+      Bucket: !Ref ImagesBucket
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              AWS: !Sub arn:aws:iam::${AWS::AccountId}:root
+            Action:
+              - s3:GetObject
+              - s3:PutObject
+              - s3:DeleteObject
+              - s3:ListBucket
+            Resource:
+              - !Sub arn:aws:s3:::${S3BucketName}
+              - !Sub arn:aws:s3:::${S3BucketName}/*
+
+  # IAM Role for S3 Access
+  S3AccessRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - ec2.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      Policies:
+        - PolicyName: S3AccessPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:PutObject
+                  - s3:DeleteObject
+                  - s3:ListBucket
+                Resource:
+                  - !Sub arn:aws:s3:::${S3BucketName}
+                  - !Sub arn:aws:s3:::${S3BucketName}/*
+
+  # Instance Profile for S3 Access
+  S3InstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Roles:
+        - !Ref S3AccessRole
+
+  # Public ECR Repository
+  ECRRepository:
+    Type: AWS::ECR::Repository
+    Properties:
+      RepositoryName: !Ref ECRRepositoryName
+      RepositoryPolicyText:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: PublicReadAccess
+            Effect: Allow
+            Principal: '*'
+            Action:
+              - ecr:GetDownloadUrlForLayer
+              - ecr:BatchGetImage
+              - ecr:BatchCheckLayerAvailability
+      LifecyclePolicy:
+        LifecyclePolicyText: |
+          {
+            "rules": [
+              {
+                "rulePriority": 1,
+                "description": "Keep only the latest 10 images",
+                "selection": {
+                  "tagStatus": "any",
+                  "countType": "imageCountMoreThan",
+                  "countNumber": 10
+                },
+                "action": {
+                  "type": "expire"
+                }
+              }
+            ]
+          }
 
 Outputs:
-  VPCId:
-    Description: ID of the VPC
+  VPC:
+    Description: VPC ID
     Value: !Ref VPC
+    Export:
+      Name: !Sub ${ProjectName}-vpc-id
 
-  PublicSubnet1Id:
-    Description: ID of Public Subnet 1
+  PublicSubnet1:
+    Description: Public Subnet 1 ID
     Value: !Ref PublicSubnet1
+    Export:
+      Name: !Sub ${ProjectName}-public-subnet-1
 
-  PublicSubnet2Id:
-    Description: ID of Public Subnet 2
+  PublicSubnet2:
+    Description: Public Subnet 2 ID
     Value: !Ref PublicSubnet2
+    Export:
+      Name: !Sub ${ProjectName}-public-subnet-2
 
-  PrivateSubnet1Id:
-    Description: ID of Private Subnet 1
+  PrivateSubnet1:
+    Description: Private Subnet 1 ID
     Value: !Ref PrivateSubnet1
+    Export:
+      Name: !Sub ${ProjectName}-private-subnet-1
 
-  PrivateSubnet2Id:
-    Description: ID of Private Subnet 2
+  PrivateSubnet2:
+    Description: Private Subnet 2 ID
     Value: !Ref PrivateSubnet2
+    Export:
+      Name: !Sub ${ProjectName}-private-subnet-2
 
-  RDSInstanceEndpoint:
-    Description: Endpoint of the RDS instance
+  ALBSecurityGroup:
+    Description: ALB Security Group ID
+    Value: !Ref ALBSecurityGroup
+    Export:
+      Name: !Sub ${ProjectName}-alb-sg
+
+  ECSSecurityGroup:
+    Description: ECS Security Group ID
+    Value: !Ref ECSSecurityGroup
+    Export:
+      Name: !Sub ${ProjectName}-ecs-sg
+
+  RDSEndpoint:
+    Description: RDS Endpoint
     Value: !GetAtt RDSInstance.Endpoint.Address
+    Export:
+      Name: !Sub ${ProjectName}-rds-endpoint
 
-  RDSInstancePort:
-    Description: Port of the RDS instance
-    Value: !GetAtt RDSInstance.Endpoint.Port
+  RDSDBName:
+    Description: RDS Database Name
+    Value: !Sub ${ProjectName}-db
+    Export:
+      Name: !Sub ${ProjectName}-rds-db-name
 
-  NatGatewayId:
-    Description: ID of the NAT Gateway
-    Value: !Ref NatGateway
+  ECRRepositoryName:
+    Description: ECR Repository
+    Value: !Ref ECRRepository
+    Export:
+      Name: !Sub ${ProjectName}-repo
+
+  ECRRepositoryUri:
+    Description: ECR Repository URI
+    Value: !Sub ${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${ECRRepositoryName}
+    Export:
+      Name: !Sub ${ProjectName}-ecr-repo-uri
+
+  S3BucketName:
+    Description: S3 Bucket Name
+    Value: !Ref S3BucketName
+    Export:
+      Name: !Sub ${ProjectName}-s3-bucket
+
+  S3AccessRole:
+    Description: IAM Role for S3 Access
+    Value: !Ref S3AccessRole
+    Export:
+      Name: !Sub ${ProjectName}-s3-access-role
