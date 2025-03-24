@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Image Photos</title>
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Font Awesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <!-- Custom CSS -->
+    <link rel="stylesheet" th:href="@{/css/styles.css}">
+</head>
+<body>
+<!-- Navbar -->
+<header class="navbar">
+    <div class="logo">
+        <img th:src="@{/images/logo.png}" alt="Logo">
+        <h1>Image Photos</h1>
+    </div>
+    <div class="upload-button">
+        <button id="open-modal" class="btn btn-danger">
+            <i class="fa-solid fa-upload"></i> Upload
+        </button>
+    </div>
+</header>
+
+<div id="upload-modal" class="modal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Upload Image</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <form id="upload-form" method="POST" enctype="multipart/form-data" th:action="@{/api/images/upload}">
+                    <div class="mb-3">
+                        <label for="image-name" class="form-label">Image Name</label>
+                        <input type="text" class="form-control" id="image-name" name="imageName" placeholder="Enter image name" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="image-file" class="form-label">Select Image</label>
+                        <input type="file" class="form-control" id="image-file" name="file" accept="image/*" required>
+                    </div>
+                    <!-- Image Preview -->
+                    <div id="image-preview-container" class="mb-3 d-none">
+                        <label class="form-label">Preview</label>
+                        <div class="d-flex justify-content-center">
+                            <img id="image-preview" src="#" alt="Image Preview" class="img-thumbnail" style="max-width: 200px;">
+                        </div>
+                    </div>
+                    <button type="submit" class="btn btn-primary">Upload</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Image Gallery -->
+<main>
+    <section class="gallery" id="gallery">
+        <div class="card" th:each="image : ${content}">
+            <div class="card-image-container">
+                <img th:src="${image.url}" alt="Image" class="card-image">
+                <!-- Overlay -->
+                <div class="card-overlay">
+                    <div class="card-text-container">
+                        <h5 class="card-title" th:text="${image.name}">ImageName</h5>
+                        <p class="card-text">
+                            <span th:text="${#temporals.format(image.uploadedAt, 'yyyy-MM-dd h:mm a')}"></span>
+                        </p>
+                    </div>
+                </div>
+                <!-- Hover Actions -->
+                <div class="card-actions-hover">
+                    <button class="btn btn-sm btn-primary edit-button" data-key="${image.key}">
+                        <i class="fa-solid fa-pen-to-square"></i>
+                    </button>
+                    <button class="btn btn-sm btn-danger delete-button" data-key="${image.key}">
+                        <i class="fa-solid fa-trash"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </section>
+</main>
+
+<!-- Pagination Controls -->
+<footer class="pagination">
+    <button id="prev-page" disabled>
+        <i class="fa-solid fa-chevron-left"></i> Previous
+    </button>
+    <span id="page-info">Page <span id="current-page">1</span> of <span id="total-pages">1</span></span>
+    <button id="next-page">
+        Next <i class="fa-solid fa-chevron-right"></i>
+    </button>
+</footer>
+<!-- Bootstrap JS -->
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
+<!-- Custom JS -->
+<script th:src="@{/js/main.js}"></script>
+</body>
+</html>
