@@ -8,7 +8,8 @@ import software.amazon.awssdk.services.ssm.model.GetParameterResponse;
 
 @Configuration
 public class DbConfig {
-    private static final String PARAMETER_NAME = "ParameterName";
+    private static final String DB_USERNAME = "/s3-app/db-username";
+    private static final String DB_PASSWORD = "/s3-app/db-password";
 
     private final SsmClient ssmClient;
 
@@ -20,7 +21,7 @@ public class DbConfig {
     public String getDbUsername() {
         GetParameterRequest usernameRequest = GetParameterRequest
                 .builder()
-                .name(PARAMETER_NAME)
+                .name(DB_USERNAME)
                 .withDecryption(true)
                 .build();
         GetParameterResponse usernameResponse = ssmClient.getParameter(usernameRequest);
@@ -31,7 +32,7 @@ public class DbConfig {
     public String getDbPassword() {
         GetParameterRequest passwordRequest = GetParameterRequest
                 .builder()
-                .name(PARAMETER_NAME)
+                .name(DB_PASSWORD)
                 .withDecryption(true)
                 .build();
         GetParameterResponse passwordResponse = ssmClient.getParameter(passwordRequest);

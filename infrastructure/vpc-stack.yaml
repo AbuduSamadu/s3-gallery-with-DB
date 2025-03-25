@@ -55,7 +55,7 @@ Parameters:
 
   S3BucketName:
     Type: String
-    Default: image-gallery-mascot-new-1
+    Default: image-gallery-mascot-new
     Description: Name of the S3 bucket for storing images
 
 Resources:
@@ -354,6 +354,22 @@ Resources:
       Roles:
         - !Ref S3AccessRole
 
+  # Parameter Store for Database Credentials
+  DBUsernameParameter:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Sub /${ProjectName}/db-username
+      Type: String
+      Value: !Ref DBUsername
+
+  DBPasswordParameter:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Sub /${ProjectName}/db-password
+      Type: String
+      Value: !Ref DBPassword
+
+
   # Public ECR Repository
   ECRRepository:
     Type: AWS::ECR::Repository
@@ -466,3 +482,15 @@ Outputs:
     Value: !Ref S3AccessRole
     Export:
       Name: !Sub ${ProjectName}-s3-access-role
+
+  DBUsernameParameter:
+    Description: Parameter Store Path for DB Username
+    Value: !Sub /${ProjectName}/db-username
+    Export:
+      Name: !Sub ${ProjectName}-db-username-parameter
+
+  DBPasswordParameter:
+    Description: Parameter Store Path for DB Password
+    Value: !Sub /${ProjectName}/db-password
+    Export:
+      Name: !Sub ${ProjectName}-db-password-parameter

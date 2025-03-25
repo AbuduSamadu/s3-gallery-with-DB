@@ -1,1 +1,30 @@
+version: '3.8'
 services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8080:8080" # Map host port 8080 to container port 8080
+    environment:
+      - SPRING_PROFILES_ACTIVE=dev
+      - DB_HOST=${DB_HOST}
+      - DB_PORT=${DB_PORT}
+      - DB_NAME=${DB_NAME}
+      - DB_USERNAME=${DB_USERNAME}
+      - DB_PASSWORD=${DB_PASSWORD}
+    depends_on:
+      - db
+  db:
+    image: postgres:latest-slim
+    environment:
+      - POSTGRES_Url=jdbc:postgresql://localhost:5432/gallery
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=Abudu?0248
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/actuator/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5

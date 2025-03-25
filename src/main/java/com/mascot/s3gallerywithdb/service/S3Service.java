@@ -25,7 +25,7 @@ import java.util.List;
 @Service
 public class S3Service {
 
-    private static final String BUCKET_NAME = "gallerywithdb";
+    private static final String BUCKET_NAME = "image-gallery-mascot-new";
     private static final Logger logger = LoggerFactory.getLogger(S3Service.class);
 
     private final S3Client s3Client;
@@ -129,10 +129,14 @@ public class S3Service {
                 contentType = contentTypeUtil.getContentTypeFromKey(key);
             }
 
+            String description = "Default description";
             return new Image(key,
                     presignedUrl,
+                    description,
+                    extractNameFromKey(key),
                     contentType,
-                    s3Object.size(), extractNameFromKey(key), uploadedAt != null ? uploadedAt : LocalDateTime.now());
+                    s3Object.size(),
+                    uploadedAt != null ? uploadedAt : LocalDateTime.now());
         }).toList();
 
         //  Calculate totalPages

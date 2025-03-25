@@ -7,6 +7,6 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
 @Repository
-public interface ImageRespository extends JpaRepository<Image, Long> {
+public interface ImageRespository extends JpaRepository<Image, String> {
     Page<Image> findAll(Pageable pageable);
 }
