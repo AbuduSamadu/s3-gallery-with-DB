@@ -33,10 +33,13 @@
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body">
-                <form id="upload-form" method="POST" enctype="multipart/form-data" th:action="@{/api/images/upload}">
+                <form id="upload-form" method="POST" enctype="multipart/form-data" th:action="@{/api/v1/images/upload}">
                     <div class="mb-3">
                         <label for="image-name" class="form-label">Image Name</label>
                         <input type="text" class="form-control" id="image-name" name="imageName" placeholder="Enter image name" required>
+                    </div><div class="mb-3">
+                        <label for="image-description" class="form-label">Image Description</label>
+                        <input type="text" class="form-control" id="image-description" name="imageDescription" placeholder="Enter image description" required>
                     </div>
                     <div class="mb-3">
                         <label for="image-file" class="form-label">Select Image</label>

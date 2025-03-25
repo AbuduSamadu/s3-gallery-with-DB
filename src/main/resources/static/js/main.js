@@ -41,35 +41,32 @@ document.addEventListener("DOMContentLoaded", async () => {
 
         const formData = new FormData(event.target);
         const imageName = formData.get('imageName');
+        const imageDescription = formData.get('imageDescription');
         const file = formData.get('file');
 
-        if (!file || !imageName) {
+        if (!file || !imageName || !imageDescription) {
             alert('Please provide both an image name and a file.');
             return;
         }
+        const response = await fetch('/api/v1/images/upload', {
+            method: 'POST',
+            body: formData,
+        });
 
-        try {
-            const response = await fetch('/api/images/upload', {
-                method: 'POST',
-                body: formData,
-            });
-
-            if (response.ok) {
-                alert('File uploaded successfully!');
-                window.location.reload(); // Refresh the page to show the new image
-            } else {
-                alert('An error occurred while uploading the file.');
-            }
-        } catch (error) {
-            console.error('Error uploading file:', error);
-            alert('An error occurred while uploading the file.');
+        if (!response.ok) {
+            const errorData = await response.json();
+            alert(`Error: ${errorData.message || 'An unknown error occurred.'}`);
+            return;
         }
+
+        alert('File uploaded successfully!');
+        window.location.reload();
     });
 
     // Fetch and render images
     const fetchAndRenderImages = async (page = 0) => {
         try {
-            const response = await fetch(`/api/images/gallery?page=${page}&size=4`);
+            const response = await fetch(`/api/v1/images/gallery?page=${page}&size=4`);
             const data = await response.json();
 
             if (!data.content || !Array.isArray(data.content)) {
@@ -151,7 +148,7 @@ document.addEventListener("DOMContentLoaded", async () => {
                     const newName = prompt('Enter the new name for the image:', title.textContent);
                     if (newName && newName.trim() !== '') {
                         try {
-                            const response = await fetch(`/api/images/${editButton.dataset.key}`, {
+                            const response = await fetch(`/api/v1/images/${editButton.dataset.key}`, {
                                 method: 'PUT',
                                 headers: { 'Content-Type': 'application/json' },
                                 body: JSON.stringify({ name: newName }),
@@ -172,7 +169,7 @@ document.addEventListener("DOMContentLoaded", async () => {
                 deleteButton.addEventListener('click', async () => {
                     if (confirm('Are you sure you want to delete this image?')) {
                         try {
-                            const response = await fetch(`/api/images/${deleteButton.dataset.key}`, {
+                            const response = await fetch(`/api/v1/images/${deleteButton.dataset.key}`, {
                                 method: 'DELETE',
                             });
 
