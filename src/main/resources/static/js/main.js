@@ -41,26 +41,29 @@ document.addEventListener("DOMContentLoaded", async () => {
 
         const formData = new FormData(event.target);
         const imageName = formData.get('imageName');
-        const imageDescription = formData.get('imageDescription');
         const file = formData.get('file');
 
-        if (!file || !imageName || !imageDescription) {
+        if (!file || !imageName) {
             alert('Please provide both an image name and a file.');
             return;
         }
-        const response = await fetch('/api/v1/images/upload', {
-            method: 'POST',
-            body: formData,
-        });
 
-        if (!response.ok) {
-            const errorData = await response.json();
-            alert(`Error: ${errorData.message || 'An unknown error occurred.'}`);
-            return;
+        try {
+            const response = await fetch('/api/v1/images/upload', {
+                method: 'POST',
+                body: formData,
+            });
+
+            if (response.ok) {
+                alert('File uploaded successfully!');
+                window.location.reload(); // Refresh the page to show the new image
+            } else {
+                alert('An error occurred while uploading the file.');
+            }
+        } catch (error) {
+            console.error('Error uploading file:', error);
+            alert('An error occurred while uploading the file.');
         }
-
-        alert('File uploaded successfully!');
-        window.location.reload();
     });
 
     // Fetch and render images
@@ -68,6 +71,8 @@ document.addEventListener("DOMContentLoaded", async () => {
         try {
             const response = await fetch(`/api/v1/images/gallery?page=${page}&size=4`);
             const data = await response.json();
+
+            console.log("Images data", data);
 
             if (!data.content || !Array.isArray(data.content)) {
                 throw new Error('Invalid API response');
@@ -132,9 +137,13 @@ document.addEventListener("DOMContentLoaded", async () => {
                 title.classList.add('card-title');
                 title.textContent = image.name;
 
+                const description = document.createElement('h5');
+                description.classList.add('card-title');
+                description.textContent = image.description;
+
                 const timestamp = document.createElement('p');
                 timestamp.classList.add('card-text');
-                timestamp.textContent = `${new Date(image.uploadedAt).toLocaleString()}`;
+                timestamp.textContent = `${new Date(image.createdAt).toLocaleString()}`;
 
                 cardDetails.appendChild(title);
                 cardDetails.appendChild(timestamp);
@@ -194,7 +203,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     };
 
     // Initial fetch
-    fetchAndRenderImages(currentPage);
+    await fetchAndRenderImages(currentPage);
 
     // Handle Previous Page
     prevButton.addEventListener('click', () => {

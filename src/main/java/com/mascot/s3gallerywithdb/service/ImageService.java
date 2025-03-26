@@ -15,6 +15,7 @@ import java.io.File;
 import java.io.IOException;
 import java.time.LocalDateTime;
 import java.util.Objects;
+import java.util.Optional;
 
 @Service
 public class ImageService {
@@ -40,12 +41,10 @@ public class ImageService {
             File tempFile = convertMultipartFileToFile(file);
             s3Service.uploadFile(imageName, tempFile);
             s3Service.generatePresidedUrl(imageName);
-            String key = generateUniqueKey(imageName, getFileExtension(file.getOriginalFilename()));
 
-            String s3Url = s3Service.generatePresidedUrl(key);
+            String s3Url = s3Service.generatePresidedUrl(imageName);
             String contentType = file.getContentType();
             long  size = file.getSize();
-
             Image image = Image.builder()
                     .s3Url(s3Url)
                     .description(imageDescription)
@@ -54,13 +53,6 @@ public class ImageService {
                     .size(size)
                     .createdAt(LocalDateTime.now())
                     .build();
-
-            image.setName(imageName);
-            image.setDescription(imageDescription);
-            image.setS3Url(s3Url);
-            image.setContentType(contentType);
-            image.setSize(size);
-
             logger.info("image and description have been uploaded: {} and:  {} ", imageName, imageDescription);
 
             imageRespository.save(image);
@@ -71,17 +63,26 @@ public class ImageService {
         }
     }
 
-    public Page<Image> getAllImages(Pageable pageable) {
-        return imageRespository.findAll(pageable);
+    public Page<Image> listImages(Pageable pageable) {
+        // Fetch paginated results from the database
+        Page<Image> imagePage = imageRespository.findAll(pageable);
+
+        // Log for debugging purposes
+        logger.info("Listing images with page {} and size {}. Total elements: {}, Total pages: {}",
+                pageable.getPageNumber(),
+                pageable.getPageSize(),
+                imagePage.getTotalElements(),
+                imagePage.getTotalPages());
+
+        return imagePage;
     }
 
     public void deleteImage(String key) {
-        if (!s3Service.fileExists(key)) {
-            logger.error("Image with key {} does not exist", key);
-            throw new ResourceNotFoundException("Image with key " + key + " does not exist.");
+        Optional<Image> imageOptional = imageRespository.findById(key);
+        if(imageOptional.isEmpty()){
+            throw new ResourceNotFoundException("Image with the " + key +  " not found "  );
         }
         try {
-            s3Service.deleteImage(key);
             imageRespository.deleteById(key);
             logger.info("Successfully deleted image with key: {}", key);
         } catch (Exception e) {
@@ -90,10 +91,7 @@ public class ImageService {
         }
     }
 
-    public Page<Image> listImages(Pageable pageable) {
-        logger.info("Listing images with page {} and size {}", pageable.getPageNumber(), pageable.getPageSize());
-        return s3Service.listImages(pageable);
-    }
+
 
     private File convertMultipartFileToFile(MultipartFile file) throws IOException {
         File tempFile = File.createTempFile("temp", null);
