@@ -24,7 +24,7 @@ public class Image {
     @Column(nullable = false, columnDefinition = "TEXT")
     @NotBlank(message = "S3 URL is required")
     @Size(max = 2048, message = "S3 URL must not exceed 2048 characters")
-    private String s3Url;
+    private String url;
 
     @Column(nullable = false, columnDefinition = "TEXT")
     @NotBlank(message = "Description is required")
@@ -51,8 +51,5 @@ public class Image {
     @Column(nullable = false)
     private LocalDateTime createdAt;
 
-    @PrePersist
-    public void prePersist() {
-        createdAt = LocalDateTime.now();
-    }
+
 }
