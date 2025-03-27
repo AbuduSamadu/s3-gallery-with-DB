@@ -137,7 +137,7 @@ document.addEventListener("DOMContentLoaded", async () => {
                 title.classList.add('card-title');
                 title.textContent = image.name;
 
-                const description = document.createElement('h5');
+                const description = document.createElement('h6');
                 description.classList.add('card-title');
                 description.textContent = image.description;
 
@@ -146,6 +146,7 @@ document.addEventListener("DOMContentLoaded", async () => {
                 timestamp.textContent = `${new Date(image.createdAt).toLocaleString()}`;
 
                 cardDetails.appendChild(title);
+                cardDetails.appendChild(description);
                 cardDetails.appendChild(timestamp);
 
                 // Append all parts to the card

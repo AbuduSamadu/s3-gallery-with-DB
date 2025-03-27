@@ -37,6 +37,9 @@
                     <div class="mb-3">
                         <label for="image-name" class="form-label">Image Name</label>
                         <input type="text" class="form-control" id="image-name" name="imageName" placeholder="Enter image name" required>
+                    </div><div class="mb-3">
+                        <label for="image-description" class="form-label">Image Description</label>
+                        <input type="text" class="form-control" id="image-description" name="imageDescription" placeholder="Enter image description" required>
                     </div>
                     <div class="mb-3">
                         <label for="image-file" class="form-label">Select Image</label>
@@ -61,7 +64,7 @@
     <section class="gallery" id="gallery">
         <div class="card" th:each="image : ${content}">
             <div class="card-image-container">
-                <img th:src="${image.s3Url}" alt="Image" class="card-image">
+                <img th:src="${image.url}" alt="Image" class="card-image">
                 <!-- Overlay -->
                 <div class="card-overlay">
                     <div class="card-text-container">

@@ -42,11 +42,11 @@ public class ImageService {
             s3Service.uploadFile(imageName, tempFile);
             s3Service.generatePresidedUrl(imageName);
 
-            String s3Url = s3Service.generatePresidedUrl(imageName);
+            String url = s3Service.generatePresidedUrl(imageName);
             String contentType = file.getContentType();
             long  size = file.getSize();
             Image image = Image.builder()
-                    .s3Url(s3Url)
+                    .url(url)
                     .description(imageDescription)
                     .name(imageName)
                     .contentType(contentType)
@@ -91,24 +91,11 @@ public class ImageService {
         }
     }
 
-
-
     private File convertMultipartFileToFile(MultipartFile file) throws IOException {
         File tempFile = File.createTempFile("temp", null);
         file.transferTo(tempFile);
         return tempFile;
     }
 
-    private String generateUniqueKey(String name, String extension) {
-        String sanitizedFileName = name.replaceAll("[^a-zA-Z0-9.-]", "_");
-        return sanitizedFileName + "-" + System.currentTimeMillis() + "." + extension;
-    }
-
-    private String getFileExtension(String originalFilename) {
-        if (originalFilename == null || !originalFilename.contains(".")) {
-            return "bin"; // Default extension if none is found
-        }
-        return originalFilename.substring(originalFilename.lastIndexOf(".") + 1);
-    }
 
 }
