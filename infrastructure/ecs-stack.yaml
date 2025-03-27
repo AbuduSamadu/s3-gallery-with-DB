@@ -1,235 +1,589 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: 'ECS Cluster, Service, and Task Definitions'
-
 Parameters:
-  ProjectName:
+  EnvironmentName:
+    Description: Environment name that will be prefixed to resource names
     Type: String
     Default: s3-gallery
-    Description: Name of the project
-
-  ContainerPort:
-    Type: Number
-    Default: 9090
-    Description: Port on which the container will listen
-
-  ECRRepositoryURI:
+  VpcCIDR:
+    Description: CIDR block for the VPC
     Type: String
-    Default: public.ecr.aws/g4y8k5p1/s3-gallery:latest
-    Description: Name of the ECR repository
-
-  TaskCPU:
+    Default: 10.0.0.0/16
+  PublicSubnet1CIDR:
+    Description: CIDR block for the public subnet in AZ 1
+    Type: String
+    Default: 10.0.1.0/24
+  PublicSubnet2CIDR:
+    Description: CIDR block for the public subnet in AZ 2
+    Type: String
+    Default: 10.0.2.0/24
+  PrivateSubnet1CIDR:
+    Description: CIDR block for the private subnet in AZ 1
+    Type: String
+    Default: 10.0.3.0/24
+  PrivateSubnet2CIDR:
+    Description: CIDR block for the private subnet in AZ 2
+    Type: String
+    Default: 10.0.4.0/24
+  DBSubnet1CIDR:
+    Description: CIDR block for the database subnet in AZ 1
+    Type: String
+    Default: 10.0.5.0/24
+  DBSubnet2CIDR:
+    Description: CIDR block for the database subnet in AZ 2
+    Type: String
+    Default: 10.0.6.0/24
+  DBUsername:
+    Description: Username for the RDS PostgreSQL database
+    Type: String
+    Default: s3galleryadmin
+    NoEcho: true
+  DBPassword:
+    Description: Password for the RDS PostgreSQL database
+    Type: String
+    Default: Abudu?0248
+    NoEcho: true
+  DBName:
+    Description: Name of the database
+    Type: String
+    Default: s3gallerydb
+  DBInstanceClass:
+    Description: RDS instance type
+    Type: String
+    Default: db.t3.small
+  ContainerPort:
+    Description: Port that the container exposes
     Type: Number
-    Default: 512
-    Description: CPU units for the ECS task
-    AllowedValues:
-      - 256
-      - 512
-      - 1024
-      - 2048
-      - 4096
-      - 8192
-
-  TaskMemory:
-    Type: Number
-    Default: 1024
-    Description: Memory for the ECS task
-    AllowedValues:
-      - 512
-      - 1024
-      - 2048
-      - 4096
-      - 8192
-      - 16384
-
+    Default: 8080
 Resources:
-  # IAM Roles
-  ECSTaskExecutionRole:
-    Type: AWS::IAM::Role
+  #Systems Manager Parameter Store
+  DBNameParameter:
+    Type: AWS::SSM::Parameter
     Properties:
-      AssumeRolePolicyDocument:
-        Version: '2012-10-17'
-        Statement:
-          - Effect: Allow
-            Principal:
-              Service: ecs-tasks.amazonaws.com
-            Action: sts:AssumeRole
-      ManagedPolicyArns:
-        - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
+      Name: /s3-gallery/db/name
+      Type: String
+      Value: s3gallerydb
+      Description: "RDS PostgreSQL database name for S3-Gallery application"
+  DBUsernameParameter:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: /s3-gallery/db/username
+      Type: String
+      Value: !Ref DBUsername
+      Description: "RDS PostgreSQL username for S3-Gallery application"
+  DBPasswordParameter:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: /s3-gallery/db/password
+      Type: String
+      Value: !Ref DBPassword
+      Description: "RDS PostgreSQL password for S3-Gallery application"
 
-  ECSTaskRole:
-    Type: AWS::IAM::Role
+  S3GalleryDB:
+    Type: AWS::RDS::DBInstance
     Properties:
-      AssumeRolePolicyDocument:
-        Version: '2012-10-17'
-        Statement:
-          - Effect: Allow
-            Principal:
-              Service: ecs-tasks.amazonaws.com
-            Action: sts:AssumeRole
-      ManagedPolicyArns:
-        - arn:aws:iam::aws:policy/AmazonS3FullAccess
-
-  # Load Balancer
-  ApplicationLoadBalancer:
-    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
-    Properties:
-      Name: !Sub ${ProjectName}-alb
-      Scheme: internet-facing
-      LoadBalancerAttributes:
-        - Key: idle_timeout.timeout_seconds
-          Value: '60'
-      Subnets:
-        - Fn::ImportValue: !Sub ${ProjectName}-public-subnet-1
-        - Fn::ImportValue: !Sub ${ProjectName}-public-subnet-2
-      SecurityGroups:
-        - Fn::ImportValue: !Sub ${ProjectName}-alb-sg
+      DBInstanceIdentifier: s3-gallery
+      AllocatedStorage: 20
+      DBInstanceClass: db.t3.micro
+      Engine: postgres
+      EngineVersion: "17.2"
+      MasterUsername: !Ref DBUsername
+      MasterUserPassword: !Ref DBPassword
+      MultiAZ: true
+      PubliclyAccessible: false
+      StorageType: gp2
+      DBName: !Ref DBName
+      DBSubnetGroupName: !Ref RDSSubnetGroup
+      VPCSecurityGroups:
+        - !GetAtt RDSSecurityGroup.GroupId
+      BackupRetentionPeriod: 7
+      DeletionProtection: false
       Tags:
         - Key: Name
-          Value: !Sub ${ProjectName}-alb
-
-  # Target Group
+          Value: S3GalleryDB
+  # VPC
+  VPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: !Ref VpcCIDR
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      Tags:
+        - Key: Name
+          Value: s3-gallery-VPC
+  # Public Subnets (for Load Balancer)
+  PublicSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: !Ref PublicSubnet1CIDR
+      MapPublicIpOnLaunch: true
+      AvailabilityZone: !Select [ 0, !GetAZs "" ]
+      Tags:
+        - Key: Name
+          Value: PublicSubnet1
+  PublicSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: !Ref PublicSubnet2CIDR
+      MapPublicIpOnLaunch: true
+      AvailabilityZone: !Select [ 1, !GetAZs "" ]
+      Tags:
+        - Key: Name
+          Value: PublicSubnet2
+  # Private Subnets (for ECS)
+  PrivateSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: !Ref PrivateSubnet1CIDR
+      MapPublicIpOnLaunch: false
+      AvailabilityZone: !Select [ 0, !GetAZs "" ]
+      Tags:
+        - Key: Name
+          Value: PrivateSubnet1
+  PrivateSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: !Ref PrivateSubnet2CIDR
+      MapPublicIpOnLaunch: false
+      AvailabilityZone: !Select [ 1, !GetAZs "" ]
+      Tags:
+        - Key: Name
+          Value: PrivateSubnet2
+  # Internet Gateway
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+  AttachGateway:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref VPC
+      InternetGatewayId: !Ref InternetGateway
+  # NAT Gateway for Private Subnets
+  NatGatewayEIP:
+    Type: AWS::EC2::EIP
+    DependsOn: AttachGateway
+    Properties:
+      Domain: vpc
+  NatGateway:
+    Type: AWS::EC2::NatGateway
+    Properties:
+      AllocationId: !GetAtt NatGatewayEIP.AllocationId
+      SubnetId: !Ref PublicSubnet1
+      Tags:
+        - Key: Name
+          Value: NatGateway
+  RDSSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: "Security group for RDS PostgreSQL"
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 5432
+          ToPort: 5432
+          SourceSecurityGroupId: !Ref ECSServiceSecurityGroup
+      Tags:
+        - Key: Name
+          Value: RDSSecurityGroup
+  RDSSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: "Subnet group for RDS PostgreSQL"
+      SubnetIds:
+        - !Ref PrivateSubnet1
+        - !Ref PrivateSubnet2
+      Tags:
+        - Key: Name
+          Value: RDSSubnetGroup
+  # Route Tables
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: PublicRouteTable
+  PublicRoute:
+    Type: AWS::EC2::Route
+    DependsOn: AttachGateway
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+  PublicSubnet1RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnet1
+      RouteTableId: !Ref PublicRouteTable
+  PublicSubnet2RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnet2
+      RouteTableId: !Ref PublicRouteTable
+  # Private Route Table
+  PrivateRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: PrivateRouteTable
+  PrivateRoute:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref NatGateway
+  PrivateSubnet1RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PrivateSubnet1
+      RouteTableId: !Ref PrivateRouteTable
+  PrivateSubnet2RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PrivateSubnet2
+      RouteTableId: !Ref PrivateRouteTable
+  # ECS Cluster
+  S3GalleryCluster:
+    Type: AWS::ECS::Cluster
+    Properties:
+      ClusterName: S3GalleryCluster
+  # Task Execution Role
+  TaskExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - ecs-tasks.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      Policies:
+        - PolicyName: TaskExecutionPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - ecr:GetAuthorizationToken
+                  - ecr:BatchCheckLayerAvailability
+                  - ecr:GetDownloadUrlForLayer
+                  - ecr:BatchGetImage
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: '*'
+  S3AccessRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - ecs-tasks.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonS3FullAccess
+        - arn:aws:iam::aws:policy/AmazonSSMFullAccess
+  # CodeDeploy role for blue-green deployments
+  CodeDeployServiceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - codedeploy.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AWSCodeDeployRoleForECS
+  # Create log group
+  ECSLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: s3-gallery-log-group
+  ECSTaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: s3-gallery-task
+      RequiresCompatibilities:
+        - FARGATE
+      Cpu: '2048'
+      Memory: '4096'
+      NetworkMode: awsvpc
+      ExecutionRoleArn: !GetAtt TaskExecutionRole.Arn
+      TaskRoleArn: !GetAtt S3AccessRole.Arn
+      ContainerDefinitions:
+        - Name: s3-gallery-container
+          Essential: true
+          Image: 443370714528.dkr.ecr.eu-central-1.amazonaws.com/s3-gallery:latest
+          PortMappings:
+            - ContainerPort: !Ref ContainerPort
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: s3-gallery-log-group
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: ecs
+          Environment:
+            - Name: DB_NAME
+              Value: !Sub DBName
+            - Name: DB_USERNAME
+              Value: !Ref DBUsername
+            - Name: DB_PASSWORD
+              Value: !Ref DBPassword
+            - Name: DB_URL
+              Value: !Sub 'jdbc:postgresql://${S3GalleryDB.Endpoint.Address}:${S3GalleryDB.Endpoint.Port}/${DBName}'
+  LoadBalancerSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: "Allow HTTP and HTTPS traffic to the Load Balancer"
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: !Ref ContainerPort
+          ToPort: !Ref ContainerPort
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 8081
+          ToPort: 8081
+          CidrIp: 0.0.0.0/0
+      SecurityGroupEgress:
+        - IpProtocol: -1
+          CidrIp: 0.0.0.0/0
+  ECSServiceSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: "Allow inbound traffic from Load Balancer to ECS service"
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: !Ref ContainerPort
+          ToPort: !Ref ContainerPort
+          SourceSecurityGroupId: !Ref LoadBalancerSecurityGroup
+      SecurityGroupEgress:
+        - IpProtocol: -1
+          CidrIp: 0.0.0.0/0
+  # Application Load Balancer
+  S3GalleryLoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Name: s3-gallery-load-balancer
+      Subnets:
+        - !Ref PublicSubnet1
+        - !Ref PublicSubnet2
+      SecurityGroups:
+        - !Ref LoadBalancerSecurityGroup
+      Scheme: internet-facing
+      Type: application
+  # Production target group (initially blue environment)
   BlueTargetGroup:
     Type: AWS::ElasticLoadBalancingV2::TargetGroup
     Properties:
-      Name: !Sub ${ProjectName}-tg-blue
-      Port: 80
+      Name: s3-gallery-blue-target
+      Port: !Ref ContainerPort
       Protocol: HTTP
+      VpcId: !Ref VPC
       TargetType: ip
-      VpcId:
-        Fn::ImportValue: !Sub ${ProjectName}-vpc-id
-      HealthCheckProtocol: HTTP
       HealthCheckPath: /
-      HealthCheckIntervalSeconds: 30
-      HealthCheckTimeoutSeconds: 5
-      HealthyThresholdCount: 3
-      UnhealthyThresholdCount: 3
-      Matcher:
-        HttpCode: '200-299'
-
+      HealthCheckTimeoutSeconds: 60
+      HealthCheckIntervalSeconds: 70
+      TargetGroupAttributes:
+        - Key: deregistration_delay.timeout_seconds
+          Value: "300"
+  # Green target group for new deployments
   GreenTargetGroup:
     Type: AWS::ElasticLoadBalancingV2::TargetGroup
     Properties:
-      Name: !Sub ${ProjectName}-tg-green
-      Port: 80
+      Name: s3-gallery-green-target
+      Port: !Ref ContainerPort
       Protocol: HTTP
+      VpcId: !Ref VPC
       TargetType: ip
-      VpcId:
-        Fn::ImportValue: !Sub ${ProjectName}-vpc-id
-      HealthCheckProtocol: HTTP
       HealthCheckPath: /
-      HealthCheckIntervalSeconds: 30
-      HealthCheckTimeoutSeconds: 5
-      HealthyThresholdCount: 3
-      UnhealthyThresholdCount: 3
-      Matcher:
-        HttpCode: '200-299'
-
-  # Listener
-  ALBListener:
-    Type: AWS::ElasticLoadBalancingV2::Listener
-    Properties:
-      DefaultActions:
-        - Type: forward
-          TargetGroupArn: !Ref BlueTargetGroup
-      LoadBalancerArn: !Ref ApplicationLoadBalancer
-      Port: 80
-      Protocol: HTTP
-
-  ALBTestListener:
+      HealthCheckTimeoutSeconds: 60
+      HealthCheckIntervalSeconds: 70
+      TargetGroupAttributes:
+        - Key: deregistration_delay.timeout_seconds
+          Value: "300"
+  # Test listener for validation testing before switching traffic
+  TestListener:
     Type: AWS::ElasticLoadBalancingV2::Listener
     Properties:
       DefaultActions:
         - Type: forward
           TargetGroupArn: !Ref GreenTargetGroup
-      LoadBalancerArn: !Ref ApplicationLoadBalancer
+      LoadBalancerArn: !Ref S3GalleryLoadBalancer
       Port: 8081
       Protocol: HTTP
-
-  # CloudWatch Log Group
-  CloudWatchLogGroup:
-    Type: AWS::Logs::LogGroup
+  # Production listener (initially points to blue environment)
+  ProductionListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
     Properties:
-      LogGroupName: !Sub /ecs/${ProjectName}
-      RetentionInDays: 30
-
-  # ECS Cluster
-  ECSCluster:
-    Type: AWS::ECS::Cluster
-    Properties:
-      ClusterName: !Sub ${ProjectName}-cluster
-      CapacityProviders:
-        - FARGATE
-        - FARGATE_SPOT
-      DefaultCapacityProviderStrategy:
-        - CapacityProvider: FARGATE
-          Weight: 1
-
-  # ECS Task Definition
-  TaskDefinition:
-    Type: AWS::ECS::TaskDefinition
-    Properties:
-      Family: !Sub ${ProjectName}-task1
-      Cpu: !Ref TaskCPU
-      Memory: !Ref TaskMemory
-      NetworkMode: awsvpc
-      RequiresCompatibilities:
-        - FARGATE
-      ExecutionRoleArn: !GetAtt ECSTaskExecutionRole.Arn
-      TaskRoleArn: !GetAtt ECSTaskRole.Arn
-      ContainerDefinitions:
-        - Name: !Sub ${ProjectName}-container
-          Image: !Ref ECRRepositoryURI
-          Essential: true
-          PortMappings:
-            - ContainerPort: !Ref ContainerPort
-              HostPort: !Ref ContainerPort
-              Protocol: tcp
-          LogConfiguration:
-            LogDriver: awslogs
-            Options:
-              awslogs-group: !Ref CloudWatchLogGroup
-              awslogs-region: !Ref AWS::Region
-              awslogs-stream-prefix: ecs
-          Environment:
-            - Name: S3_BUCKET_NAME
-              Value:
-                Fn::ImportValue: !Sub ${ProjectName}-s3-bucket
-
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref BlueTargetGroup
+      LoadBalancerArn: !Ref S3GalleryLoadBalancer
+      Port: 80
+      Protocol: HTTP
   # ECS Service
   ECSService:
     Type: AWS::ECS::Service
-    DependsOn: ALBListener
     Properties:
-      ServiceName: !Sub ${ProjectName}-service
-      Cluster: !Ref ECSCluster
-      TaskDefinition: !Ref TaskDefinition
-      DesiredCount: 3
+      ServiceName: s3-gallery-service
+      Cluster: !Ref S3GalleryCluster
+      TaskDefinition: !Ref ECSTaskDefinition
       LaunchType: FARGATE
-      DeploymentController:
-        Type: CODE_DEPLOY
-      LoadBalancers:
-        - TargetGroupArn: !Ref BlueTargetGroup
-          ContainerName: !Sub ${ProjectName}-container
-          ContainerPort: !Ref ContainerPort
+      SchedulingStrategy: REPLICA
+      DesiredCount: 1
+      HealthCheckGracePeriodSeconds: 60
       NetworkConfiguration:
         AwsvpcConfiguration:
+          Subnets:
+            - !Ref PrivateSubnet1
+            - !Ref PrivateSubnet2
           AssignPublicIp: DISABLED
           SecurityGroups:
-            - Fn::ImportValue: !Sub ${ProjectName}-ecs-sg
-          Subnets:
-            - Fn::ImportValue: !Sub ${ProjectName}-private-subnet-1
-            - Fn::ImportValue: !Sub ${ProjectName}-private-subnet-2
-
-  # Auto Scaling
-  AutoScalingTarget:
+            - !Ref ECSServiceSecurityGroup
+      LoadBalancers:
+        - TargetGroupArn: !Ref BlueTargetGroup
+          ContainerName: s3-gallery-container
+          ContainerPort: !Ref ContainerPort
+      PropagateTags: SERVICE
+      EnableECSManagedTags: true
+      DeploymentController:
+        Type: CODE_DEPLOY
+    DependsOn:
+      - ProductionListener
+      - TestListener
+  # IAM Role for Auto Scaling
+  ECSAutoScalingRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - application-autoscaling.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      Policies:
+        - PolicyName: ECSAutoScalingPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - ecs:UpdateService
+                  - ecs:DescribeServices
+                  - application-autoscaling:RegisterScalableTarget
+                  - application-autoscaling:DescribeScalableTargets
+                  - application-autoscaling:PutScalingPolicy
+                Resource: "*"
+              - Effect: Allow
+                Action:
+                  - cloudwatch:PutMetricAlarm
+                  - cloudwatch:DeleteAlarms
+                  - application-autoscaling:*
+                Resource: "*"
+  # Auto Scaling Target
+  ECSAutoScalingTarget:
     Type: AWS::ApplicationAutoScaling::ScalableTarget
     Properties:
-      MaxCapacity: 6
-      MinCapacity: 2
+      MaxCapacity: 3
+      MinCapacity: 1
       ResourceId: !Join
-        - /
+        - '/'
         - - service
-          - !Ref ECSCluster
+          - !Ref S3GalleryCluster
           - !GetAtt ECSService.Name
+      RoleARN: !GetAtt ECSAutoScalingRole.Arn
       ScalableDimension: ecs:service:DesiredCount
       ServiceNamespace: ecs
+  # Auto Scaling Policy
+  ECSAutoScalingPolicy:
+    Type: AWS::ApplicationAutoScaling::ScalingPolicy
+    Properties:
+      PolicyName: ECSAutoScalingPolicy
+      PolicyType: TargetTrackingScaling
+      ScalingTargetId: !Ref ECSAutoScalingTarget
+      TargetTrackingScalingPolicyConfiguration:
+        TargetValue: 50
+        PredefinedMetricSpecification:
+          PredefinedMetricType: ECSServiceAverageCPUUtilization
+        ScaleInCooldown: 60
+        ScaleOutCooldown: 60
+  # CodeDeploy Application
+  CodeDeployApplication:
+    Type: AWS::CodeDeploy::Application
+    Properties:
+      ApplicationName: s3-gallery-application
+      ComputePlatform: ECS
+  # CodeDeploy Deployment Group
+  DeploymentGroup:
+    Type: AWS::CodeDeploy::DeploymentGroup
+    Properties:
+      ApplicationName: !Ref CodeDeployApplication
+      ServiceRoleArn: !GetAtt CodeDeployServiceRole.Arn
+      DeploymentConfigName: CodeDeployDefault.ECSAllAtOnce
+      DeploymentGroupName: s3-gallery-deployment-group
+      DeploymentStyle:
+        DeploymentType: BLUE_GREEN
+        DeploymentOption: WITH_TRAFFIC_CONTROL
+      BlueGreenDeploymentConfiguration:
+        DeploymentReadyOption:
+          ActionOnTimeout: CONTINUE_DEPLOYMENT
+        TerminateBlueInstancesOnDeploymentSuccess:
+          Action: TERMINATE
+          TerminationWaitTimeInMinutes: 5
+      ECSServices:
+        - ClusterName: !Ref S3GalleryCluster
+          ServiceName: !GetAtt ECSService.Name
+      LoadBalancerInfo:
+        TargetGroupPairInfoList:
+          - ProdTrafficRoute:
+              ListenerArns:
+                - !Ref ProductionListener
+            TestTrafficRoute:
+              ListenerArns:
+                - !Ref TestListener
+            TargetGroups:
+              - Name: !GetAtt BlueTargetGroup.TargetGroupName
+              - Name: !GetAtt GreenTargetGroup.TargetGroupName
+Outputs:
+  S3GalleryLoadBalancerDNS:
+    Description: The DNS name of the load balancer
+    Value: !GetAtt S3GalleryLoadBalancer.DNSName
+  S3GalleryLoadBalancerURL:
+    Description: URL of the load balancer
+    Value: !Join ['', ['http://', !GetAtt S3GalleryLoadBalancer.DNSName]]
+  CodeDeployAppName:
+    Description: CodeDeploy Application Name for ECS Blue-Green Deployments
+    Value: !Ref CodeDeployApplication
+  CodeDeployGroupName:
+    Description: CodeDeploy Deployment Group Name
+    Value: !Ref DeploymentGroup
+  RDSEndpoint:
+    Description: "RDS PostgreSQL endpoint"
+    Value: !GetAtt S3GalleryDB.Endpoint.Address

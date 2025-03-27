@@ -22,11 +22,11 @@ public class DbConfig {
     @Bean
     @Profile("prod")
     public DataSource dataSource(SsmClient ssmClient) {
-        String dbHost = getParameter(ssmClient, "/s3-app/db-host");
+        String dbHost = getParameter(ssmClient, "/s3-gallery/db/url");
         String dbPort = getParameter(ssmClient, "/s3-app/db-port");
-        String dbName = getParameter(ssmClient, "/s3-app/db-name");
-        String dbUsername = getParameter(ssmClient, "/s3-app/db-username");
-        String dbPassword = getParameter(ssmClient, "/s3-app/db-password");
+        String dbName = getParameter(ssmClient, "/s3-gallery/db/name");
+        String dbUsername = getParameter(ssmClient, "/s3-gallery/db/username");
+        String dbPassword = getParameter(ssmClient, "/s3-gallery/db/password");
 
         HikariDataSource dataSource = new HikariDataSource();
         dataSource.setJdbcUrl("jdbc:postgresql://" + dbHost + ":" + dbPort + "/" + dbName);
