@@ -14,7 +14,7 @@ public class AwsConfig {
    @Bean
    public SsmClient ssmClient() {
        return SsmClient.builder()
-               .region(Region.EU_WEST_1)
+               .region(Region.US_EAST_1)
                .credentialsProvider(DefaultCredentialsProvider.create())
                .build();
    }
@@ -22,14 +22,14 @@ public class AwsConfig {
     @Bean
     public S3Client s3Client() {
         return S3Client.builder()
-                .region(Region.EU_WEST_1)
+                .region(Region.US_EAST_1)
                 .credentialsProvider(DefaultCredentialsProvider.create())
                 .build();
     }
     @Bean
     public S3Presigner s3Presigner(){
         return S3Presigner.builder()
-                .region(Region.EU_WEST_1)
+                .region(Region.US_EAST_1)
                 .credentialsProvider(DefaultCredentialsProvider.create())
                 .build();
     }
