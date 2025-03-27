@@ -1,52 +1,49 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: >
-  CloudFormation template to provision an ECS cluster with blue/green deployment.
+Description: 'ECS Cluster, Service, and Task Definitions'
 
 Parameters:
-  EnvironmentName:
-    Description: The name of the environment (e.g., dev, prod)
+  ProjectName:
     Type: String
-    Default: dev
+    Default: s3-app
+    Description: Name of the project
 
-  VPCId:
-    Description: ID of the VPC
-    Type: AWS::EC2::VPC::Id
+  ContainerPort:
+    Type: Number
+    Default: 9090
+    Description: Port on which the container will listen
 
-  PublicSubnet1Id:
-    Description: ID of Public Subnet 1
-    Type: AWS::EC2::Subnet::Id
+  ECRRepositoryURI:
+    Type: String
+    Default: public.ecr.aws/g4y8k5p1/s3-gallery:latest
+    Description: Name of the ECR repository
 
-  PublicSubnet2Id:
-    Description: ID of Public Subnet 2
-    Type: AWS::EC2::Subnet::Id
+  TaskCPU:
+    Type: Number
+    Default: 512
+    Description: CPU units for the ECS task
+    AllowedValues:
+      - 256
+      - 512
+      - 1024
+      - 2048
+      - 4096
+      - 8192
 
-  AppSecurityGroupId:
-    Description: ID of the Application Security Group
-    Type: AWS::EC2::SecurityGroup::Id
+  TaskMemory:
+    Type: Number
+    Default: 1024
+    Description: Memory for the ECS task
+    AllowedValues:
+      - 512
+      - 1024
+      - 2048
+      - 4096
+      - 8192
+      - 16384
 
 Resources:
-  ECSCluster:
-    Type: AWS::ECS::Cluster
-    Properties:
-      ClusterName: !Sub "${EnvironmentName}-ecs-cluster"
-
-  TaskDefinition:
-    Type: AWS::ECS::TaskDefinition
-    Properties:
-      Family: !Sub "${EnvironmentName}-task"
-      NetworkMode: awsvpc
-      RequiresCompatibilities:
-        - FARGATE
-      Cpu: "256"
-      Memory: "512"
-      ExecutionRoleArn: !GetAtt TaskExecutionRole.Arn
-      ContainerDefinitions:
-        - Name: app-container
-          Image: !Sub "${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${EnvironmentName}-app:latest"
-          PortMappings:
-            - ContainerPort: 80
-
-  TaskExecutionRole:
+  # IAM Roles
+  ECSTaskExecutionRole:
     Type: AWS::IAM::Role
     Properties:
       AssumeRolePolicyDocument:
@@ -56,44 +53,183 @@ Resources:
             Principal:
               Service: ecs-tasks.amazonaws.com
             Action: sts:AssumeRole
-      Policies:
-        - PolicyName: AmazonECSTaskExecutionRolePolicy
-          PolicyDocument:
-            Version: '2012-10-17'
-            Statement:
-              - Effect: Allow
-                Action:
-                  - ecr:GetAuthorizationToken
-                  - ecr:BatchCheckLayerAvailability
-                  - ecr:GetDownloadUrlForLayer
-                  - ecr:BatchGetImage
-                  - logs:CreateLogStream
-                  - logs:PutLogEvents
-                Resource: "*"
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
 
+  ECSTaskRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonS3FullAccess
+
+  # Load Balancer
+  ApplicationLoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Name: !Sub ${ProjectName}-alb
+      Scheme: internet-facing
+      LoadBalancerAttributes:
+        - Key: idle_timeout.timeout_seconds
+          Value: '60'
+      Subnets:
+        - Fn::ImportValue: !Sub ${ProjectName}-public-subnet-1
+        - Fn::ImportValue: !Sub ${ProjectName}-public-subnet-2
+      SecurityGroups:
+        - Fn::ImportValue: !Sub ${ProjectName}-alb-sg
+      Tags:
+        - Key: Name
+          Value: !Sub ${ProjectName}-alb
+
+  # Target Group
+  BlueTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Name: !Sub ${ProjectName}-tg-blue
+      Port: 80
+      Protocol: HTTP
+      TargetType: ip
+      VpcId:
+        Fn::ImportValue: !Sub ${ProjectName}-vpc-id
+      HealthCheckProtocol: HTTP
+      HealthCheckPath: /
+      HealthCheckIntervalSeconds: 10
+      HealthCheckTimeoutSeconds: 5
+      HealthyThresholdCount: 3
+      UnhealthyThresholdCount: 3
+      Matcher:
+        HttpCode: '200-299'
+
+  GreenTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Name: !Sub ${ProjectName}-tg-green
+      Port: 80
+      Protocol: HTTP
+      TargetType: ip
+      VpcId:
+        Fn::ImportValue: !Sub ${ProjectName}-vpc-id
+      HealthCheckProtocol: HTTP
+      HealthCheckPath: /
+      HealthCheckIntervalSeconds: 10
+      HealthCheckTimeoutSeconds: 5
+      HealthyThresholdCount: 3
+      UnhealthyThresholdCount: 3
+      Matcher:
+        HttpCode: '200-299'
+
+  # Listener
+  ALBListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref BlueTargetGroup
+      LoadBalancerArn: !Ref ApplicationLoadBalancer
+      Port: 80
+      Protocol: HTTP
+
+  ALBTestListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref GreenTargetGroup
+      LoadBalancerArn: !Ref ApplicationLoadBalancer
+      Port: 8081
+      Protocol: HTTP
+
+  # CloudWatch Log Group
+  CloudWatchLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /ecs/${ProjectName}
+      RetentionInDays: 30
+
+  # ECS Cluster
+  ECSCluster:
+    Type: AWS::ECS::Cluster
+    Properties:
+      ClusterName: !Sub ${ProjectName}-cluster
+      CapacityProviders:
+        - FARGATE
+        - FARGATE_SPOT
+      DefaultCapacityProviderStrategy:
+        - CapacityProvider: FARGATE
+          Weight: 1
+
+  # ECS Task Definition
+  TaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: !Sub ${ProjectName}-task1
+      Cpu: !Ref TaskCPU
+      Memory: !Ref TaskMemory
+      NetworkMode: awsvpc
+      RequiresCompatibilities:
+        - FARGATE
+      ExecutionRoleArn: !GetAtt ECSTaskExecutionRole.Arn
+      TaskRoleArn: !GetAtt ECSTaskRole.Arn
+      ContainerDefinitions:
+        - Name: !Sub ${ProjectName}-container
+          Image: !Ref ECRRepositoryURI
+          Essential: true
+          PortMappings:
+            - ContainerPort: !Ref ContainerPort
+              HostPort: !Ref ContainerPort
+              Protocol: tcp
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref CloudWatchLogGroup
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: ecs
+          Environment:
+            - Name: S3_BUCKET_NAME
+              Value:
+                Fn::ImportValue: !Sub ${ProjectName}-s3-bucket
+
+  # ECS Service
   ECSService:
     Type: AWS::ECS::Service
+    DependsOn: ALBListener
     Properties:
+      ServiceName: !Sub ${ProjectName}-service
       Cluster: !Ref ECSCluster
-      DesiredCount: 2
+      TaskDefinition: !Ref TaskDefinition
+      DesiredCount: 3
       LaunchType: FARGATE
       DeploymentController:
-        Type: CODE_DEPLOY
+        Type: ECS
+      LoadBalancers:
+        - TargetGroupArn: !Ref BlueTargetGroup
+          ContainerName: !Sub ${ProjectName}-container
+          ContainerPort: !Ref ContainerPort
       NetworkConfiguration:
         AwsvpcConfiguration:
-          AssignPublicIp: ENABLED
+          AssignPublicIp: DISABLED
           SecurityGroups:
-            - !Ref AppSecurityGroupId
+            - Fn::ImportValue: !Sub ${ProjectName}-ecs-sg
           Subnets:
-            - !Ref PublicSubnet1Id
-            - !Ref PublicSubnet2Id
-      TaskDefinition: !Ref TaskDefinition
+            - Fn::ImportValue: !Sub ${ProjectName}-private-subnet-1
+            - Fn::ImportValue: !Sub ${ProjectName}-private-subnet-2
 
-Outputs:
-  ECSClusterName:
-    Description: Name of the ECS Cluster
-    Value: !Ref ECSCluster
-
-  TaskDefinitionArn:
-    Description: ARN of the Task Definition
-    Value: !Ref TaskDefinition
+  # Auto Scaling
+  AutoScalingTarget:
+    Type: AWS::ApplicationAutoScaling::ScalableTarget
+    Properties:
+      MaxCapacity: 6
+      MinCapacity: 2
+      ResourceId: !Join
+        - /
+        - - service
+          - !Ref ECSCluster
+          - !GetAtt ECSService.Name
+      ScalableDimension: ecs:service:DesiredCount
+      ServiceNamespace: ecs
