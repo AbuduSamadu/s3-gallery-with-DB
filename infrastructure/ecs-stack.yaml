@@ -14,7 +14,7 @@ Parameters:
 
   ECRRepositoryURI:
     Type: String
-    Default: public.ecr.aws/g4y8k5p1/s3-gallery:latest
+    Default: 329599647651.dkr.ecr.eu-west-1.amazonaws.com/s3-gallery:5d705aa935624cdfdd110a48c9fdfcc96a5e04ef
     Description: Name of the ECR repository
 
   TaskCPU:
@@ -99,7 +99,7 @@ Resources:
         Fn::ImportValue: !Sub ${ProjectName}-vpc-id
       HealthCheckProtocol: HTTP
       HealthCheckPath: /
-      HealthCheckIntervalSeconds: 10
+      HealthCheckIntervalSeconds: 30
       HealthCheckTimeoutSeconds: 5
       HealthyThresholdCount: 3
       UnhealthyThresholdCount: 3
@@ -117,7 +117,7 @@ Resources:
         Fn::ImportValue: !Sub ${ProjectName}-vpc-id
       HealthCheckProtocol: HTTP
       HealthCheckPath: /
-      HealthCheckIntervalSeconds: 10
+      HealthCheckIntervalSeconds: 30
       HealthCheckTimeoutSeconds: 5
       HealthyThresholdCount: 3
       UnhealthyThresholdCount: 3
@@ -206,7 +206,7 @@ Resources:
       DesiredCount: 3
       LaunchType: FARGATE
       DeploymentController:
-        Type: ECS
+        Type: CODE_DEPLOY
       LoadBalancers:
         - TargetGroupArn: !Ref BlueTargetGroup
           ContainerName: !Sub ${ProjectName}-container

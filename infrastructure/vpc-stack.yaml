@@ -34,7 +34,7 @@ Parameters:
 
   DBUsername:
     Type: String
-    Default: mascot
+    Default: postgres
     Description: Username for the PostgreSQL database
 
   DBPassword:
