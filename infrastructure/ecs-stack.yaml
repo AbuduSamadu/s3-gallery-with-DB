@@ -4,7 +4,7 @@ Description: 'ECS Cluster, Service, and Task Definitions'
 Parameters:
   ProjectName:
     Type: String
-    Default: s3-app
+    Default: s3-gallery
     Description: Name of the project
 
   ContainerPort:
@@ -14,7 +14,7 @@ Parameters:
 
   ECRRepositoryURI:
     Type: String
-    Default: 329599647651.dkr.ecr.eu-west-1.amazonaws.com/s3-gallery:5d705aa935624cdfdd110a48c9fdfcc96a5e04ef
+    Default: public.ecr.aws/g4y8k5p1/s3-gallery:latest
     Description: Name of the ECR repository
 
   TaskCPU:

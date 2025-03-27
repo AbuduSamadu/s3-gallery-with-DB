@@ -370,7 +370,7 @@ Resources:
       Value: !Ref DBPassword
 
 
-  # Public ECR Repository
+  # Private ECR Repository
   ECRRepository:
     Type: AWS::ECR::Repository
     Properties:
