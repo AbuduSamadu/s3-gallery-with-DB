@@ -14,7 +14,7 @@ Parameters:
 
   ECRRepositoryURI:
     Type: String
-    Default: public.ecr.aws/g4y8k5p1/s3-gallery:latest
+    Default: 329599647651.dkr.ecr.eu-central-1.amazonaws.com/s3-gallery:latest
     Description: Name of the ECR repository
 
   TaskCPU:
@@ -48,7 +48,6 @@ Parameters:
 
   DBPassword:
     Type: String
-    Default: Abudu?0248
     NoEcho: true
     Description: Master password for the RDS instance
 
@@ -258,14 +257,15 @@ Resources:
   # RDS PostgreSQL Instance
   RDSInstance:
     Type: AWS::RDS::DBInstance
+    DeletionPolicy: Snapshot
     Properties:
+      DBName: postgres
       AllocatedStorage: 20
       DBInstanceClass: db.t3.micro
       Engine: postgres
-      EngineVersion: "13.6"
+      EngineVersion: "17.2"
       MasterUsername: !Ref DBUsername
       MasterUserPassword: !Ref DBPassword
-      DBName: !Sub ${ProjectName}-db
       MultiAZ: true
       PubliclyAccessible: false
       StorageType: gp2
@@ -273,7 +273,11 @@ Resources:
       VPCSecurityGroups:
         - Fn::ImportValue: !Sub ${ProjectName}-rds-sg
       DBSubnetGroupName: !Ref DBSubnetGroup
-      DeletionPolicy: Snapshot
+      EnableCloudwatchLogsExports:
+        - postgresql
+    CreationPolicy:
+      ResourceSignal:
+        Timeout: PT30M
 
   # RDS Subnet Group
   DBSubnetGroup:
@@ -311,7 +315,7 @@ Resources:
     Type: AWS::SSM::Parameter
     Properties:
       Name: !Sub "/${ProjectName}/db-password"
-      Type: SecureString
+      Type: String
       Value: !Ref DBPassword
 
 Outputs:
