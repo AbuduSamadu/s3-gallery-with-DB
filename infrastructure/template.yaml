@@ -398,8 +398,6 @@ Resources:
             - Name: DB_URL
               Value: !Sub 'jdbc:postgresql://${GalleryDB.Endpoint.Address}:${GalleryDB.Endpoint.Port}/${DBName}'
 
-
-
   LoadBalancerSecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
