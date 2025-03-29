@@ -15,7 +15,7 @@ import java.time.Duration;
 @Service
 public class S3Service {
 
-    private static final String BUCKET_NAME = "image-gallery-mascot-new";
+    private static final String BUCKET_NAME = "image-gallery-bucket-new";
 
     private final S3Client s3Client;
     private final S3Presigner s3Presigner;
