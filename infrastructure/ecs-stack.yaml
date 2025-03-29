@@ -14,7 +14,7 @@ Parameters:
 
   ECRRepositoryURI:
     Type: String
-    Default: public.ecr.aws/g4y8k5p1/s3-gallery:latest
+    Default: 329599647651.dkr.ecr.eu-central-1.amazonaws.com/gallery-app:latest
     Description: Name of the ECR repository
 
   TaskCPU:
@@ -63,8 +63,8 @@ Resources:
             Statement:
               - Effect: Allow
                 Action:
-                  - ssm:GetParameter
                   - ssm:GetParameters
+                  - ssm:GetParameter
                 Resource:
                   - !Sub arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${ProjectName}/rds/*
               - Effect: Allow
@@ -217,13 +217,17 @@ Resources:
               ValueFrom: !Sub /${ProjectName}/rds/password
           Environment:
             - Name: S3_BUCKET_NAME
-              Value:
-                Fn::ImportValue: !Sub ${ProjectName}-s3-bucket
+              ValueFrom:
+                Fn::ImportValue: !Sub ${ProjectName}-s3-bucket-name
+
 
   # ECS Service
   ECSService:
     Type: AWS::ECS::Service
-    DependsOn: ALBListener
+    DependsOn:
+      - ALBListener
+      - BlueTargetGroup
+      - GreenTargetGroup
     Properties:
       ServiceName: !Sub ${ProjectName}-service
       Cluster: !Ref ECSCluster
@@ -253,38 +257,40 @@ Resources:
       ComputePlatform: ECS
 
   # CodeDeploy Deployment Group
-  CodeDeployDeploymentGroup:
+  DeploymentGroup:
     Type: AWS::CodeDeploy::DeploymentGroup
+    DependsOn:
+      - ECSService
     Properties:
       ApplicationName: !Ref CodeDeployApplication
-      DeploymentGroupName: !Sub ${ProjectName}-codedeploy-group
-      ServiceRoleArn: !GetAtt CodeDeployServiceRole.Arn
+      DeploymentGroupName: !Sub ${ProjectName}-deploy-group
       DeploymentConfigName: CodeDeployDefault.ECSAllAtOnce
+      ServiceRoleArn: !GetAtt CodeDeployServiceRole.Arn
       DeploymentStyle:
         DeploymentType: BLUE_GREEN
         DeploymentOption: WITH_TRAFFIC_CONTROL
       BlueGreenDeploymentConfiguration:
+        DeploymentReadyOption:
+          ActionOnTimeout: CONTINUE_DEPLOYMENT
+          WaitTimeInMinutes: 0
         TerminateBlueInstancesOnDeploymentSuccess:
           Action: TERMINATE
           TerminationWaitTimeInMinutes: 5
-        DeploymentReadyOption:
-          ActionOnTimeout: CONTINUE_DEPLOYMENT
-        TrafficRoutingConfiguration:
-          Type: ALL_AT_ONCE
-      ECSApplication:
-        ClusterName: !Ref ECSCluster
-        ServiceName: !Sub ${ProjectName}-service
       LoadBalancerInfo:
         TargetGroupPairInfoList:
-          - TargetGroups:
-              - Name: !Ref BlueTargetGroup
-              - Name: !Ref GreenTargetGroup
-            ProdTrafficRoute:
+          - ProdTrafficRoute:
               ListenerArns:
                 - !Ref ALBListener
-            TestTrafficRoute:
+            TargetGroups:
+              - Name: !Ref BlueTargetGroup
+              - Name: !Ref GreenTargetGroup
+          - TestTrafficRoute:
               ListenerArns:
                 - !Ref ALBTestListener
+      ECSServices:
+        - ClusterName: !Ref ECSCluster
+          ServiceName: !Sub ${ProjectName}-service
+
 
   # CodeDeploy Service Role
   CodeDeployServiceRole:
