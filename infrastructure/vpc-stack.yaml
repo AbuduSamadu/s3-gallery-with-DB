@@ -1,5 +1,5 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: 'VPC Infrastructure for Highly Available Containerized Web Application'
+Description: 'VPC Infrastructure for Highly Available Containerized Web Application with Private RDS PostgreSQL'
 
 Parameters:
   ProjectName:
@@ -39,13 +39,24 @@ Parameters:
 
   ECRRepositoryName:
     Type: String
-    Default: s3-gallery
+    Default: gallery-app
     Description: Name of the ECR repository
 
   S3BucketName:
     Type: String
-    Default: image-gallery-basket-new
+    Default: image-gallery-mascot-new
     Description: Name of the S3 bucket for storing images
+
+  DBUsername:
+    Type: String
+    Default: postgres
+    Description: Username for the RDS instance
+
+  DBPassword:
+    Type: String
+    Default: Abudu?0248
+    NoEcho: true
+    Description: Password for the RDS instance
 
 Resources:
   # VPC
@@ -126,7 +137,7 @@ Resources:
     Properties:
       Domain: vpc
 
-  # NAT Gateway
+  # Single NAT Gateway
   NatGateway:
     Type: AWS::EC2::NatGateway
     Properties:
@@ -134,7 +145,7 @@ Resources:
       SubnetId: !Ref PublicSubnet1
       Tags:
         - Key: Name
-          Value: !Sub ${ProjectName}-nat-gateway-1
+          Value: !Sub ${ProjectName}-nat-gateway
 
   # Route Tables
   PublicRouteTable:
@@ -145,21 +156,13 @@ Resources:
         - Key: Name
           Value: !Sub ${ProjectName}-public-route-table
 
-  PrivateRouteTable1:
+  PrivateRouteTable:
     Type: AWS::EC2::RouteTable
     Properties:
       VpcId: !Ref VPC
       Tags:
         - Key: Name
-          Value: !Sub ${ProjectName}-private-route-table-1
-
-  PrivateRouteTable2:
-    Type: AWS::EC2::RouteTable
-    Properties:
-      VpcId: !Ref VPC
-      Tags:
-        - Key: Name
-          Value: !Sub ${ProjectName}-private-route-table-2
+          Value: !Sub ${ProjectName}-private-route-table
 
   # Routes
   PublicRoute:
@@ -170,17 +173,10 @@ Resources:
       DestinationCidrBlock: 0.0.0.0/0
       GatewayId: !Ref InternetGateway
 
-  PrivateRoute1:
+  PrivateRoute:
     Type: AWS::EC2::Route
     Properties:
-      RouteTableId: !Ref PrivateRouteTable1
-      DestinationCidrBlock: 0.0.0.0/0
-      NatGatewayId: !Ref NatGateway
-
-  PrivateRoute2:
-    Type: AWS::EC2::Route
-    Properties:
-      RouteTableId: !Ref PrivateRouteTable2
+      RouteTableId: !Ref PrivateRouteTable
       DestinationCidrBlock: 0.0.0.0/0
       NatGatewayId: !Ref NatGateway
 
@@ -201,13 +197,13 @@ Resources:
     Type: AWS::EC2::SubnetRouteTableAssociation
     Properties:
       SubnetId: !Ref PrivateSubnet1
-      RouteTableId: !Ref PrivateRouteTable1
+      RouteTableId: !Ref PrivateRouteTable
 
   PrivateSubnet2RouteTableAssociation:
     Type: AWS::EC2::SubnetRouteTableAssociation
     Properties:
       SubnetId: !Ref PrivateSubnet2
-      RouteTableId: !Ref PrivateRouteTable2
+      RouteTableId: !Ref PrivateRouteTable
 
   # Security Groups
   ALBSecurityGroup:
@@ -242,11 +238,10 @@ Resources:
         - Key: Name
           Value: !Sub ${ProjectName}-ecs-sg
 
-  # Security Group for RDS PostgreSQL
   RDSSecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
-      GroupDescription: Security group for RDS PostgreSQL
+      GroupDescription: Security group for RDS instance
       VpcId: !Ref VPC
       SecurityGroupIngress:
         - IpProtocol: tcp
@@ -257,52 +252,62 @@ Resources:
         - Key: Name
           Value: !Sub ${ProjectName}-rds-sg
 
-  # S3 Bucket for Images
-  ImagesBucket:
-    Type: AWS::S3::Bucket
+  # RDS PostgreSQL Instance
+  MyDBInstance:
+    Type: AWS::RDS::DBInstance
     Properties:
-      BucketName: !Ref S3BucketName
-      PublicAccessBlockConfiguration:
-        BlockPublicAcls: false
-        BlockPublicPolicy: false
-        IgnorePublicAcls: false
-        RestrictPublicBuckets: false
-      VersioningConfiguration:
-        Status: Enabled
+      DBName: postgres
+      EngineVersion:  "17.2"
+      StorageType: gp2
+      DBInstanceIdentifier: !Sub ${ProjectName}-db
+      AllocatedStorage: 20
+      DBInstanceClass: db.t3.micro
+      Engine: postgres
+      MasterUsername: !Ref DBUsername
+      MasterUserPassword: !Ref DBPassword
+      VPCSecurityGroups:
+        - !GetAtt RDSSecurityGroup.GroupId
+      DBSubnetGroupName: !Ref DBSubnetGroup
+      PubliclyAccessible: false
+      MultiAZ: true
+      BackupRetentionPeriod: 7
+      PreferredBackupWindow:  '02:00-03:00'
+      PreferredMaintenanceWindow: "SUN:03:00-SUN:04:00"
+      DeletionProtection: false
+      Tags:
+        - Key: Name
+          Value: !Sub ${ProjectName}-postgres-db
 
-  # Public ECR Repository
-  ECRRepository:
-    Type: AWS::ECR::Repository
+  # DB Subnet Group
+  DBSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
     Properties:
-      RepositoryName: !Ref ECRRepositoryName
-      RepositoryPolicyText:
-        Version: '2012-10-17'
-        Statement:
-          - Sid: PublicReadAccess
-            Effect: Allow
-            Principal: '*'
-            Action:
-              - ecr:GetDownloadUrlForLayer
-              - ecr:BatchGetImage
-              - ecr:BatchCheckLayerAvailability
-      LifecyclePolicy:
-        LifecyclePolicyText: |
-          {
-            "rules": [
-              {
-                "rulePriority": 1,
-                "description": "Keep only the latest 10 images",
-                "selection": {
-                  "tagStatus": "any",
-                  "countType": "imageCountMoreThan",
-                  "countNumber": 10
-                },
-                "action": {
-                  "type": "expire"
-                }
-              }
-            ]
-          }
+      DBSubnetGroupDescription: Subnet group for RDS
+      SubnetIds:
+        - !Ref PrivateSubnet1
+        - !Ref PrivateSubnet2
+
+  # Store RDS Credentials in Parameter Store
+  DBEndpointParameter:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Sub /${ProjectName}/rds/endpoint
+      Type: String
+      Value: !GetAtt MyDBInstance.Endpoint.Address
+
+  DBUsernameParameter:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Sub /${ProjectName}/rds/username
+      Type: String
+      Value: !Ref DBUsername
+
+  DBPasswordParameter:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Sub /${ProjectName}/rds/password
+      Type: String
+      Value: !Ref DBPassword
 
 Outputs:
   VPC:
@@ -353,20 +358,8 @@ Outputs:
     Export:
       Name: !Sub ${ProjectName}-rds-sg
 
-  ECRRepositoryName:
-    Description: ECR Repository
-    Value: !Ref ECRRepository
+  RDSInstanceEndpoint:
+    Description: RDS Instance Endpoint
+    Value: !GetAtt MyDBInstance.Endpoint.Address
     Export:
-      Name: !Sub ${ProjectName}-repo
-
-  ECRRepositoryUri:
-    Description: ECR Repository URI
-    Value: !Sub ${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${ECRRepositoryName}
-    Export:
-      Name: !Sub ${ProjectName}-ecr-repo-uri
-
-  S3BucketName:
-    Description: S3 Bucket Name
-    Value: !Ref S3BucketName
-    Export:
-      Name: !Sub ${ProjectName}-s3-bucket
+      Name: !Sub ${ProjectName}-rds-endpoint

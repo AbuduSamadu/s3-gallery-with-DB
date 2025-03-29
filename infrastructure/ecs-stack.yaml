@@ -1,10 +1,10 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: 'ECS Cluster, Service, and Task Definitions with RDS PostgreSQL Database, Parameter Store, and S3 Bucket Name'
+Description: 'ECS Cluster, Service, Task Definitions, and CodeDeploy Integration'
 
 Parameters:
   ProjectName:
     Type: String
-    Default: gallery-app
+    Default: s3-app
     Description: Name of the project
 
   ContainerPort:
@@ -14,7 +14,7 @@ Parameters:
 
   ECRRepositoryURI:
     Type: String
-    Default: 329599647651.dkr.ecr.eu-central-1.amazonaws.com/s3-gallery:latest
+    Default: public.ecr.aws/g4y8k5p1/s3-gallery:latest
     Description: Name of the ECR repository
 
   TaskCPU:
@@ -41,16 +41,6 @@ Parameters:
       - 8192
       - 16384
 
-  DBUsername:
-    Type: String
-    Default: postgres
-    Description: Master username for the RDS instance
-
-  DBPassword:
-    Type: String
-    NoEcho: true
-    Description: Master password for the RDS instance
-
 Resources:
   # IAM Roles
   ECSTaskExecutionRole:
@@ -66,6 +56,21 @@ Resources:
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
         - arn:aws:iam::aws:policy/AmazonSSMReadOnlyAccess
+      Policies:
+        - PolicyName: SSMParameterAccessPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - ssm:GetParameter
+                  - ssm:GetParameters
+                Resource:
+                  - !Sub arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${ProjectName}/rds/*
+              - Effect: Allow
+                Action:
+                  - kms:Decrypt
+                Resource: "*"
 
   ECSTaskRole:
     Type: AWS::IAM::Role
@@ -98,7 +103,7 @@ Resources:
         - Key: Name
           Value: !Sub ${ProjectName}-alb
 
-  # Target Group
+  # Target Groups
   BlueTargetGroup:
     Type: AWS::ElasticLoadBalancingV2::TargetGroup
     Properties:
@@ -135,7 +140,7 @@ Resources:
       Matcher:
         HttpCode: '200-299'
 
-  # Listener
+  # Listeners
   ALBListener:
     Type: AWS::ElasticLoadBalancingV2::Listener
     Properties:
@@ -201,19 +206,19 @@ Resources:
               awslogs-group: !Ref CloudWatchLogGroup
               awslogs-region: !Ref AWS::Region
               awslogs-stream-prefix: ecs
+          Secrets:
+            - Name: DB_ENDPOINT
+              ValueFrom: !Sub /${ProjectName}/rds/endpoint
+            - Name: DB_URL
+              ValueFrom: !Sub /${ProjectName}/rds/url
+            - Name: DB_USERNAME
+              ValueFrom: !Sub /${ProjectName}/rds/username
+            - Name: DB_PASSWORD
+              ValueFrom: !Sub /${ProjectName}/rds/password
           Environment:
             - Name: S3_BUCKET_NAME
               Value:
                 Fn::ImportValue: !Sub ${ProjectName}-s3-bucket
-          Secrets:
-            - Name: DB_HOST
-              ValueFrom: !Sub "/${ProjectName}/db-host"
-            - Name: DB_PORT
-              ValueFrom: !Sub "/${ProjectName}/db-port"
-            - Name: DB_USER
-              ValueFrom: !Sub "/${ProjectName}/db-user"
-            - Name: DB_PASSWORD
-              ValueFrom: !Sub "/${ProjectName}/db-password"
 
   # ECS Service
   ECSService:
@@ -240,6 +245,61 @@ Resources:
             - Fn::ImportValue: !Sub ${ProjectName}-private-subnet-1
             - Fn::ImportValue: !Sub ${ProjectName}-private-subnet-2
 
+  # CodeDeploy Application
+  CodeDeployApplication:
+    Type: AWS::CodeDeploy::Application
+    Properties:
+      ApplicationName: !Sub ${ProjectName}-codedeploy-app
+      ComputePlatform: ECS
+
+  # CodeDeploy Deployment Group
+  CodeDeployDeploymentGroup:
+    Type: AWS::CodeDeploy::DeploymentGroup
+    Properties:
+      ApplicationName: !Ref CodeDeployApplication
+      DeploymentGroupName: !Sub ${ProjectName}-codedeploy-group
+      ServiceRoleArn: !GetAtt CodeDeployServiceRole.Arn
+      DeploymentConfigName: CodeDeployDefault.ECSAllAtOnce
+      DeploymentStyle:
+        DeploymentType: BLUE_GREEN
+        DeploymentOption: WITH_TRAFFIC_CONTROL
+      BlueGreenDeploymentConfiguration:
+        TerminateBlueInstancesOnDeploymentSuccess:
+          Action: TERMINATE
+          TerminationWaitTimeInMinutes: 5
+        DeploymentReadyOption:
+          ActionOnTimeout: CONTINUE_DEPLOYMENT
+        TrafficRoutingConfiguration:
+          Type: ALL_AT_ONCE
+      ECSApplication:
+        ClusterName: !Ref ECSCluster
+        ServiceName: !Sub ${ProjectName}-service
+      LoadBalancerInfo:
+        TargetGroupPairInfoList:
+          - TargetGroups:
+              - Name: !Ref BlueTargetGroup
+              - Name: !Ref GreenTargetGroup
+            ProdTrafficRoute:
+              ListenerArns:
+                - !Ref ALBListener
+            TestTrafficRoute:
+              ListenerArns:
+                - !Ref ALBTestListener
+
+  # CodeDeploy Service Role
+  CodeDeployServiceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: codedeploy.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AWSCodeDeployRoleForECS
+
   # Auto Scaling
   AutoScalingTarget:
     Type: AWS::ApplicationAutoScaling::ScalableTarget
@@ -253,80 +313,3 @@ Resources:
           - !GetAtt ECSService.Name
       ScalableDimension: ecs:service:DesiredCount
       ServiceNamespace: ecs
-
-  # RDS PostgreSQL Instance
-  RDSInstance:
-    Type: AWS::RDS::DBInstance
-    DeletionPolicy: Snapshot
-    Properties:
-      DBName: postgres
-      AllocatedStorage: 20
-      DBInstanceClass: db.t3.micro
-      Engine: postgres
-      EngineVersion: "17.2"
-      MasterUsername: !Ref DBUsername
-      MasterUserPassword: !Ref DBPassword
-      MultiAZ: true
-      PubliclyAccessible: false
-      StorageType: gp2
-      BackupRetentionPeriod: 7
-      VPCSecurityGroups:
-        - Fn::ImportValue: !Sub ${ProjectName}-rds-sg
-      DBSubnetGroupName: !Ref DBSubnetGroup
-      EnableCloudwatchLogsExports:
-        - postgresql
-    CreationPolicy:
-      ResourceSignal:
-        Timeout: PT30M
-
-  # RDS Subnet Group
-  DBSubnetGroup:
-    Type: AWS::RDS::DBSubnetGroup
-    Properties:
-      DBSubnetGroupName: !Sub ${ProjectName}-db-subnet-group
-      DBSubnetGroupDescription: Subnet group for RDS instance
-      SubnetIds:
-        - Fn::ImportValue: !Sub ${ProjectName}-private-subnet-1
-        - Fn::ImportValue: !Sub ${ProjectName}-private-subnet-2
-
-  # Parameter Store Entries
-  DBHostParameter:
-    Type: AWS::SSM::Parameter
-    Properties:
-      Name: !Sub "/${ProjectName}/db-host"
-      Type: String
-      Value: !GetAtt RDSInstance.Endpoint.Address
-
-  DBPortParameter:
-    Type: AWS::SSM::Parameter
-    Properties:
-      Name: !Sub "/${ProjectName}/db-port"
-      Type: String
-      Value: !GetAtt RDSInstance.Endpoint.Port
-
-  DBUserParameter:
-    Type: AWS::SSM::Parameter
-    Properties:
-      Name: !Sub "/${ProjectName}/db-user"
-      Type: String
-      Value: !Ref DBUsername
-
-  DBPasswordParameter:
-    Type: AWS::SSM::Parameter
-    Properties:
-      Name: !Sub "/${ProjectName}/db-password"
-      Type: String
-      Value: !Ref DBPassword
-
-Outputs:
-  RDSEndpoint:
-    Description: Endpoint of the RDS instance
-    Value: !GetAtt RDSInstance.Endpoint.Address
-    Export:
-      Name: !Sub ${ProjectName}-rds-endpoint
-
-  RDSPort:
-    Description: Port of the RDS instance
-    Value: !GetAtt RDSInstance.Endpoint.Port
-    Export:
-      Name: !Sub ${ProjectName}-rds-port
