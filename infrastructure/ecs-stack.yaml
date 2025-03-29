@@ -4,7 +4,7 @@ Description: 'ECS Cluster, Service, Task Definitions, and CodeDeploy Integration
 Parameters:
   ProjectName:
     Type: String
-    Default: s3-app
+    Default: gallery-app
     Description: Name of the project
 
   ContainerPort:
