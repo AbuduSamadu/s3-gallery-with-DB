@@ -44,7 +44,7 @@ Parameters:
 
   S3BucketName:
     Type: String
-    Default: image-gallery-mascot-new
+    Default: image-gallery-bucket-one
     Description: Name of the S3 bucket for storing images
 
   DBUsername:
@@ -309,6 +309,52 @@ Resources:
       Type: String
       Value: !Ref DBPassword
 
+  ImagesBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Ref S3BucketName
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: false
+        BlockPublicPolicy: false
+        IgnorePublicAcls: false
+        RestrictPublicBuckets: false
+      VersioningConfiguration:
+        Status: Enabled
+
+
+  ECRRepository:
+    Type: AWS::ECR::Repository
+    Properties:
+      RepositoryName: !Ref ECRRepositoryName
+      RepositoryPolicyText:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: PublicReadAccess
+            Effect: Allow
+            Principal: '*'
+            Action:
+              - ecr:GetDownloadUrlForLayer
+              - ecr:BatchGetImage
+              - ecr:BatchCheckLayerAvailability
+      LifecyclePolicy:
+        LifecyclePolicyText: |
+          {
+            "rules": [
+              {
+                "rulePriority": 1,
+                "description": "Keep only the latest 10 images",
+                "selection": {
+                  "tagStatus": "any",
+                  "countType": "imageCountMoreThan",
+                  "countNumber": 10
+                },
+                "action": {
+                  "type": "expire"
+                }
+              }
+            ]
+          }
+
 Outputs:
   VPC:
     Description: VPC ID
@@ -363,3 +409,39 @@ Outputs:
     Value: !GetAtt MyDBInstance.Endpoint.Address
     Export:
       Name: !Sub ${ProjectName}-rds-endpoint
+
+  S3BucketName:
+    Description: S3 Bucket Name
+    Value: !Ref S3BucketName
+    Export:
+      Name: !Sub ${ProjectName}-s3-bucket-name
+
+  ECRRepositoryName:
+    Description: ECR Repository Name
+    Value: !Ref ECRRepository
+    Export:
+      Name: !Sub ${ProjectName}-ecr-repository-name
+
+  ContainerPort:
+    Description: Container Port
+    Value: !Ref ContainerPort
+    Export:
+      Name: !Sub ${ProjectName}-container-port
+
+  DBEndpointParameter:
+    Description: Parameter Store Name for RDS Endpoint
+    Value: !Sub /${ProjectName}/rds/endpoint
+    Export:
+      Name: !Sub ${ProjectName}-rds-endpoint-ssm-parameter
+
+  DBUsernameParameter:
+    Description: Parameter Store Name for RDS Username
+    Value: !Sub /${ProjectName}/rds/username
+    Export:
+      Name: !Sub ${ProjectName}-rds-username-ssm-parameter
+
+  DBPasswordParameter:
+    Description: Parameter Store Name for RDS Password
+    Value: !Sub /${ProjectName}/rds/password
+    Export:
+      Name: !Sub ${ProjectName}-rds-password-ssm-parameter

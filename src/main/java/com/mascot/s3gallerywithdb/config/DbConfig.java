@@ -22,7 +22,7 @@ public class DbConfig {
     @Bean
     public DataSource dataSource() {
 
-        String dbEndpoint = getParameter("/gallery-app/rds/endpointt");
+        String dbEndpoint = getParameter("/gallery-app/rds/endpoint");
         String dbUsername = getParameter("/gallery-app/rds/username");
         String dbPassword = getParameter("/gallery-app/rds/password");
 
