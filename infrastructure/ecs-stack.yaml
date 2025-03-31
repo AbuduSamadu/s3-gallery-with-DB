@@ -219,14 +219,11 @@ Resources:
               awslogs-stream-prefix: ecs
           Secrets:
             - Name: DB_URL
-              ValueFrom:
-                Fn::ImportValue: !Sub /${ProjectName}/rds/url
+              ValueFrom: !Sub /${ProjectName}/rds/url
             - Name: DB_USERNAME
-              ValueFrom:
-                Fn::ImportValue: !Sub /${ProjectName}/rds/username
+              ValueFrom: !Sub /${ProjectName}/rds/username
             - Name: DB_PASSWORD
-              ValueFrom:
-                Fn::ImportValue: !Sub /${ProjectName}/rds/password
+              ValueFrom: !Sub /${ProjectName}/rds/password
           Environment:
             - Name: S3_BUCKET_NAME
               Value:
