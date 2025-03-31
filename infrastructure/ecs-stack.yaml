@@ -55,16 +55,14 @@ Resources:
             Action: sts:AssumeRole
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
-        - arn:aws:iam::aws:policy/AmazonSSMReadOnlyAccess
       Policies:
-        - PolicyName: SSMParameterAccessPolicy
+        - PolicyName: SSMParameterAccess
           PolicyDocument:
             Version: '2012-10-17'
             Statement:
               - Effect: Allow
                 Action:
                   - ssm:GetParameters
-                  - ssm:GetParameter
                 Resource:
                   - !Sub arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${ProjectName}/rds/*
               - Effect: Allow
@@ -84,7 +82,20 @@ Resources:
             Action: sts:AssumeRole
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/AmazonS3FullAccess
-
+      Policies:
+        - PolicyName: SSMParameterAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - ssm:GetParameters
+                Resource:
+                  - !Sub arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${ProjectName}/rds/*
+              - Effect: Allow
+                Action:
+                  - kms:Decrypt
+                Resource: "*"
   # Load Balancer
   ApplicationLoadBalancer:
     Type: AWS::ElasticLoadBalancingV2::LoadBalancer
@@ -190,8 +201,8 @@ Resources:
       NetworkMode: awsvpc
       RequiresCompatibilities:
         - FARGATE
-      ExecutionRoleArn: !GetAtt ECSTaskExecutionRole.Arn
-      TaskRoleArn: !GetAtt ECSTaskRole.Arn
+      ExecutionRoleArn: !Ref ECSTaskExecutionRole
+      TaskRoleArn: !Ref ECSTaskRole
       ContainerDefinitions:
         - Name: !Sub ${ProjectName}-container
           Image: !Ref ECRRepositoryURI
@@ -207,17 +218,18 @@ Resources:
               awslogs-region: !Ref AWS::Region
               awslogs-stream-prefix: ecs
           Secrets:
-            - Name: DB_ENDPOINT
-              ValueFrom: !Sub /${ProjectName}/rds/endpoint
             - Name: DB_URL
-              ValueFrom: !Sub /${ProjectName}/rds/url
+              ValueFrom:
+                Fn::ImportValue: !Sub /${ProjectName}/rds/url
             - Name: DB_USERNAME
-              ValueFrom: !Sub /${ProjectName}/rds/username
+              ValueFrom:
+                Fn::ImportValue: !Sub /${ProjectName}/rds/username
             - Name: DB_PASSWORD
-              ValueFrom: !Sub /${ProjectName}/rds/password
+              ValueFrom:
+                Fn::ImportValue: !Sub /${ProjectName}/rds/password
           Environment:
             - Name: S3_BUCKET_NAME
-              ValueFrom:
+              Value:
                 Fn::ImportValue: !Sub ${ProjectName}-s3-bucket-name
 
 
