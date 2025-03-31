@@ -118,7 +118,7 @@ Resources:
   BlueTargetGroup:
     Type: AWS::ElasticLoadBalancingV2::TargetGroup
     Properties:
-      Name: !Sub ${ProjectName}-tg-blue
+      Name: blue-tg
       Port: 80
       Protocol: HTTP
       TargetType: ip
@@ -136,7 +136,7 @@ Resources:
   GreenTargetGroup:
     Type: AWS::ElasticLoadBalancingV2::TargetGroup
     Properties:
-      Name: !Sub ${ProjectName}-tg-green
+      Name: green-tg
       Port: 80
       Protocol: HTTP
       TargetType: ip
