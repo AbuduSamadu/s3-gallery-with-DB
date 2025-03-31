@@ -288,12 +288,12 @@ Resources:
         - !Ref PrivateSubnet2
 
   # Store RDS Credentials in Parameter Store
-  DBEndpointParameter:
+  DBUrlParameter:
     Type: AWS::SSM::Parameter
     Properties:
-      Name: !Sub /${ProjectName}/rds/endpoint
+      Name: !Sub /${ProjectName}/rds/url
       Type: String
-      Value: !GetAtt MyDBInstance.Endpoint.Address
+      Value: !Sub 'jdbc:postgresql://${MyDBInstance.Endpoint.Address}:${MyDBInstance.Endpoint.Port}/postgres'
 
   DBUsernameParameter:
     Type: AWS::SSM::Parameter
@@ -445,3 +445,9 @@ Outputs:
     Value: !Sub /${ProjectName}/rds/password
     Export:
       Name: !Sub ${ProjectName}-rds-password-ssm-parameter
+
+  DBUrlParameter:
+    Description: Parameter Store Name for RDS URL
+    Value: !Sub /${ProjectName}/rds/url
+    Export:
+      Name: !Sub ${ProjectName}-rds-url-ssm-parameter
