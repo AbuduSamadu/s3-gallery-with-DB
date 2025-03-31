@@ -64,6 +64,6 @@ jobs:
         run: |
           aws deploy create-deployment \
             --application-name gallery-app-codedeploy-app \
-            --deployment-group-name gallery-app-codedeploy-app \
-            --s3-location bucket=image-gallery-mascot,bundleType=zip,key=deployment.zip \
-            --region us-east-1
+            --deployment-group-name gallery-app-deploy-group \
+            --s3-location bucket=image-gallery-bucket-one,bundleType=zip,key=deployment.zip \
+            --region eu-central-1
