@@ -53,3 +53,17 @@ jobs:
           docker tag $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG $ECR_REGISTRY/$ECR_REPOSITORY:latest
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
           echo "image=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> $GITHUB_OUTPUT
+          
+
+      - name: Package deployment
+        run: |
+          zip -r deployment.zip appspec.yaml
+          aws s3 cp deployment.zip s3://image-gallery-bucket-one/deployment.zip
+
+      - name: Deploy to ECS with CodeDeploy
+        run: |
+          aws deploy create-deployment \
+            --application-name gallery-app-codedeploy-app \
+            --deployment-group-name gallery-app-codedeploy-app \
+            --s3-location bucket=image-gallery-mascot,bundleType=zip,key=deployment.zip \
+            --region us-east-1

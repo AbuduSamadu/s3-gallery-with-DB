@@ -287,13 +287,13 @@ Resources:
           TerminationWaitTimeInMinutes: 5
       LoadBalancerInfo:
         TargetGroupPairInfoList:
-          - ProdTrafficRoute:
-              ListenerArns:
-                - !Ref ALBListener
-            TargetGroups:
+          - TargetGroups:
               - Name: !Ref BlueTargetGroup
               - Name: !Ref GreenTargetGroup
-          - TestTrafficRoute:
+            ProdTrafficRoute:
+              ListenerArns:
+                - !Ref ALBListener
+            TestTrafficRoute:
               ListenerArns:
                 - !Ref ALBTestListener
       ECSServices:
