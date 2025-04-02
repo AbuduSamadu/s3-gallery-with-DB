@@ -39,20 +39,20 @@ public class ImageService {
 
         try {
             File tempFile = convertMultipartFileToFile(file);
-            s3Service.uploadFile(imageName, tempFile);
-            s3Service.generatePresidedUrl(imageName);
+            Image image = Image.builder()
+                    .description(imageDescription)
+                    .name(imageName)
+                    .createdAt(LocalDateTime.now())
+                    .build();
+            s3Service.uploadFile(image.getKey(), tempFile);
+            s3Service.generatePresidedUrl(image.getKey());
 
             String url = s3Service.generatePresidedUrl(imageName);
             String contentType = file.getContentType();
             long  size = file.getSize();
-            Image image = Image.builder()
-                    .url(url)
-                    .description(imageDescription)
-                    .name(imageName)
-                    .contentType(contentType)
-                    .size(size)
-                    .createdAt(LocalDateTime.now())
-                    .build();
+            image.setSize(size);
+            image.setContentType(contentType);
+            image.setUrl(url);
             logger.info("image and description have been uploaded: {} and:  {} ", imageName, imageDescription);
 
             imageRespository.save(image);
