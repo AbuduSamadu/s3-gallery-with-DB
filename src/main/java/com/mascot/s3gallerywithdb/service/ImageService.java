@@ -16,6 +16,7 @@ import java.io.IOException;
 import java.time.LocalDateTime;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.UUID;
 
 @Service
 public class ImageService {
@@ -36,23 +37,25 @@ public class ImageService {
             logger.error("Only image files are allowed.");
             throw new IllegalArgumentException("Only image files are allowed.");
         }
-
         try {
             File tempFile = convertMultipartFileToFile(file);
-            Image image = Image.builder()
-                    .description(imageDescription)
-                    .name(imageName)
-                    .createdAt(LocalDateTime.now())
-                    .build();
-            s3Service.uploadFile(image.getKey(), tempFile);
-            s3Service.generatePresidedUrl(image.getKey());
+            String objectKey = UUID.randomUUID().toString();
+            s3Service.uploadFile(objectKey, tempFile);
 
-            String url = s3Service.generatePresidedUrl(imageName);
+            String url = s3Service.generateImageUrl(objectKey);
             String contentType = file.getContentType();
             long  size = file.getSize();
-            image.setSize(size);
-            image.setContentType(contentType);
-            image.setUrl(url);
+
+            Image image = Image.builder()
+                    .key(objectKey)
+                    .description(imageDescription)
+                    .name(imageName)
+                    .size(size)
+                    .url(url)
+                    .contentType(contentType)
+                    .createdAt(LocalDateTime.now())
+                    .build();
+
             logger.info("image and description have been uploaded: {} and:  {} ", imageName, imageDescription);
 
             imageRespository.save(image);
@@ -84,6 +87,7 @@ public class ImageService {
         }
         try {
             imageRespository.deleteById(key);
+            s3Service.deleteImage(key);
             logger.info("Successfully deleted image with key: {}", key);
         } catch (Exception e) {
             logger.error("Failed to delete image with key: {}", key, e);
