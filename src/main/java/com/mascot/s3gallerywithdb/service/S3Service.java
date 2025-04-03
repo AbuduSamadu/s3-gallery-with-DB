@@ -1,16 +1,16 @@
 package com.mascot.s3gallerywithdb.service;
 
 
+import com.mascot.s3gallerywithdb.exception.InternalServerErrorException;
 import org.springframework.stereotype.Service;
 import software.amazon.awssdk.core.sync.RequestBody;
 import software.amazon.awssdk.services.s3.S3Client;
+import software.amazon.awssdk.services.s3.model.DeleteObjectRequest;
 import software.amazon.awssdk.services.s3.model.GetObjectRequest;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
-import software.amazon.awssdk.services.s3.presigner.S3Presigner;
-import software.amazon.awssdk.services.s3.presigner.model.PresignedGetObjectRequest;
 
 import java.io.File;
-import java.time.Duration;
+
 
 @Service
 public class S3Service {
@@ -18,11 +18,9 @@ public class S3Service {
     private static final String BUCKET_NAME = "image-gallery-bucket-one";
 
     private final S3Client s3Client;
-    private final S3Presigner s3Presigner;
 
-    public S3Service(S3Client s3Client, S3Presigner s3Presigner) {
+    public S3Service(S3Client s3Client) {
         this.s3Client = s3Client;
-        this.s3Presigner = s3Presigner;
     }
 
     public void uploadFile(String key, File file) {
@@ -34,19 +32,27 @@ public class S3Service {
         s3Client.putObject(request, RequestBody.fromFile(file));
     }
 
+    public void deleteImage(String key) {
+        try {
+            DeleteObjectRequest request = DeleteObjectRequest.builder()
+                    .bucket(BUCKET_NAME)
+                    .key(key)
+                    .build();
+            s3Client.deleteObject(request);
 
-    public String generatePresidedUrl(String key) {
-        GetObjectRequest getObjectRequest = GetObjectRequest
-                .builder()
+        } catch (Exception e) {
+            throw new InternalServerErrorException("Failed to delete Image ");
+        }
+    }
+
+    public String generateImageUrl(String key) {
+        String s3Url = "https://" + BUCKET_NAME + ".s3.amazonaws.com/" + key;
+        GetObjectRequest request = GetObjectRequest.builder()
                 .bucket(BUCKET_NAME)
                 .key(key)
                 .build();
-
-        PresignedGetObjectRequest resignedRequest = s3Presigner
-                .presignGetObject(r -> r
-                        .getObjectRequest(getObjectRequest)
-                        .signatureDuration(Duration.ofMinutes(120)));
-        return resignedRequest.url().toString();
+        s3Client.getObject(request);
+        return s3Url;
     }
 
 
